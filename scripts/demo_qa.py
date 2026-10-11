@@ -58,7 +58,13 @@ def qa():
         raise ValueError('Dashboard-only/no-calendar-write expectation changed')
     if ready.get('sms_enabled'):
         raise ValueError('Live SMS is not part of this package')
-    if not ready.get('real_calendar_reads') or not ready.get('google_token_present'):
+    mock_demo = meta.get('mock_demo') is True
+    if mock_demo:
+        if (ready.get('calendar_source') != 'mock_calendar' or ready.get('real_calendar_reads')
+                or ready.get('live_calls_enabled') or ready.get('call_opt_in')
+                or cfg.get('MOCK_DIAL', '').lower() not in ('true', '1')):
+            raise ValueError('Mock demo must use mock calendar, mock Dial and disabled live calls')
+    elif not ready.get('real_calendar_reads') or not ready.get('google_token_present'):
         raise ValueError('Real-calendar configuration or token file missing')
     if any(s.get('status') in ('reserved', 'placing', 'queued', 'awaiting_transcript', 'call_unknown')
            and s.get('mode') == 'live' for s in sessions):
@@ -84,7 +90,8 @@ def qa():
         raise ValueError('Dry mode unexpectedly permits calls')
     print('QA PASS: health, configuration, next fixture and persistent session checks.')
     print('Next fixture: ' + preview['next_session']['id'])
-    print('Calendar token presence is NOT proof of a successful live read.')
+    print('Mock demo: calendar and actions use local fixtures; no provider credentials needed.' if mock_demo
+          else 'Calendar token presence is NOT proof of a successful live read.')
     print('Fixtures/actions are simulated; Alike is local-only; outbound SMS is not enabled.')
     return ready, preview
 
