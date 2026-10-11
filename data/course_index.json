@@ -1,0 +1,58 @@
+[
+  {
+    "id": "cs106b-lec-recursion",
+    "title": "CS 106B Lecture 8: Recursion and the Call Stack",
+    "url": "https://web.stanford.edu/class/cs106b/lectures/recursion",
+    "minutes": 42,
+    "course": "CS 106B"
+  },
+  {
+    "id": "cs106b-lec-trees",
+    "title": "CS 106B Lecture 12: Binary Trees",
+    "url": "https://web.stanford.edu/class/cs106b/lectures/binary-trees",
+    "minutes": 38,
+    "course": "CS 106B"
+  },
+  {
+    "id": "cs106b-pod-backtracking",
+    "title": "CS 106B Podcast: Backtracking in 20 Minutes",
+    "url": "https://web.stanford.edu/class/cs106b/podcasts/backtracking",
+    "minutes": 18,
+    "course": "CS 106B"
+  },
+  {
+    "id": "math51-lec-linear-maps",
+    "title": "Math 51 Lecture 6: Linear Maps and Matrices",
+    "url": "https://canvas.stanford.edu/courses/math51/modules/linear-maps",
+    "minutes": 50,
+    "course": "Math 51"
+  },
+  {
+    "id": "math51-pod-eigen",
+    "title": "Math 51 Podcast: Eigenvalues Before the Quiz",
+    "url": "https://canvas.stanford.edu/courses/math51/pages/eigenvalues-podcast",
+    "minutes": 12,
+    "course": "Math 51"
+  },
+  {
+    "id": "math51-lec-least-squares",
+    "title": "Math 51 Lecture 14: Least Squares",
+    "url": "https://canvas.stanford.edu/courses/math51/modules/least-squares",
+    "minutes": 27,
+    "course": "Math 51"
+  },
+  {
+    "id": "phys41-lec-newton",
+    "title": "Physics 41 Lecture 3: Newton's Laws with Friction",
+    "url": "https://canvas.stanford.edu/courses/phys41/modules/newton",
+    "minutes": 35,
+    "course": "Physics 41"
+  },
+  {
+    "id": "phys41-pod-atwood",
+    "title": "Physics 41 Podcast: Atwood Machines",
+    "url": "https://canvas.stanford.edu/courses/phys41/pages/atwood-podcast",
+    "minutes": 8,
+    "course": "Physics 41"
+  }
+]
