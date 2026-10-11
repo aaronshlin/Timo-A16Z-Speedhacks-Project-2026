@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     MOCK_CALENDAR_PATH: str = ""
     ALLOW_DEMO_CALENDAR_CALLS: bool = False
     RECEIPT_MODE: str = "dashboard"
+    # The second Dial number, which plays the user (phone/test_user.py). DEMO_PHONE is its E.164.
+    DIAL_USER_NUMBER_ID: str = ""
+    # Real outbound SMS through Dial. Off: texts land in the mock outbox.
+    SMS_ENABLED: bool = False
+    # Static bearer token Dial's Context MCP sends to /mcp.
+    MCP_TOKEN: str = ""
 
     @field_validator("DIAL_NUMBER")
     @classmethod

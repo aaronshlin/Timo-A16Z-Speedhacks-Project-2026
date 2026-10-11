@@ -1,4 +1,6 @@
-"""One-word replies, plus a free-text window like '30 min on the bus'."""
+"""Inbound texts. Dial's message.received webhook at /webhooks/dial comes in through
+handle_dial_message; handle_reply is the legacy loop: one-word replies, plus a free-text
+window like '30 min on the bus'."""
 
 import logging
 import re
@@ -11,7 +13,9 @@ from app.brain.profile import get_profile, record_feedback
 from app.brain.recommend import recommend
 from app.brain.state import get_last_pick, set_last_pick
 from app.clock import now
-from app.models import FreeWindow, Recommendation, Situation
+from app.context.router import dispatch
+from app.models import FreeWindow, Recommendation, Situation, TriggerEvent
+from app.phone import test_user
 from app.phone.dial import timo_says_now, user_e164
 from app.phone.messages import format_done, format_error_fallback, format_go, format_repick
 
@@ -30,6 +34,26 @@ completed: dict[str, set[str]] = {}
 _MINUTES = re.compile(r"(\d+)\s*(?:min|mins|minutes)\b", re.I)
 _SITUATION_WORD = re.compile(r"\b(bus|scooter|walk|laptop|audio)\b", re.I)
 _HELP = "Reply go / next / done / bus / scooter"
+_handled: set[str] = set()
+
+
+def handle_dial_message(event: dict) -> None:
+    """One signed message.received webhook. Dial retries, so each event id is handled once.
+
+    A text to Timo's number becomes a user_message trigger. A text to the test user's number is
+    Timo writing to the simulated user, who answers from its persona.
+    """
+    if event["id"] in _handled:
+        return
+    _handled.add(event["id"])
+    data = event.get("data", {})
+    sender, to, body = str(data.get("from", "")), data.get("to"), str(data.get("body", ""))
+    if to and to == settings.DIAL_NUMBER:
+        dispatch(TriggerEvent(user_id=sender, type="user_message", payload={"body": body}, ts=now()))
+    elif to and to == settings.DEMO_PHONE:
+        test_user.on_text(sender, body)
+    else:
+        log.info("inbound text to an unknown number, ignored")
 
 
 def canonical_user(phone: str) -> str:

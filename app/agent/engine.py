@@ -234,6 +234,17 @@ class Engine:
         call = (await self.api('GET', '/calls/' + quote(call_id, safe='')))['call']
         if call.get('id') != call_id or not (call.get('transcript') or call.get('transcriptTurns')):
             raise ValueError('Transcript not yet available or unexpected call record')
+        if not item.get('options'):
+            # A briefing call: its actions already ran mid-call through the MCP tools, so there is
+            # no choice to extract. Keep the user's turns for memory.
+            item.update(decision='briefed', transcribedAt=time.time(), resolvedAt=time.time(),
+                        userTurns=[str(t.get('text', '')) for t in call.get('transcriptTurns') or [] if t.get('speaker') == 'user'],
+                        receiptBody=item['receiptMessage'], receiptStatus='dashboard_only')
+            if self.result_handler:
+                await self.result_handler(item)
+            item['status'] = 'resolved'
+            self.save()
+            return
         decision = extract_decision(call, item)
         item['transcribedAt'] = time.time()
         if not decision:

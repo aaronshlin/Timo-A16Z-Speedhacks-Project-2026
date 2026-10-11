@@ -1,11 +1,22 @@
-"""Deterministic decision rules: whether to reach out, and text vs call. No LLM."""
+"""Deterministic decision rules: whether to reach out, text vs call, and reading Y/N. No LLM."""
 
+import re
 from datetime import datetime, timedelta
 
 from app.models import Channel, Memory, TriggerEvent, TriggerType, UserProfile
 
 TEXT_GAP = timedelta(hours=1)
 MAX_CALLS_PER_DAY = 2
+_YES = re.compile(r"^\s*(y|yes|yep|yeah|yup|ya|sure|correct|that'?s me)\b[\s,.!-]*", re.I)
+_NO = re.compile(r"^\s*(n|no|nope|nah|not me|wrong)\b[\s,.!-]*", re.I)
+
+
+def parse_yes_no(text: str) -> tuple[bool | None, str]:
+    """Read a reply to a Y/N ask. None means it was neither; the rest is anything said after."""
+    for answer, pattern in ((True, _YES), (False, _NO)):
+        if match := pattern.match(text):
+            return answer, text[match.end() :].strip()
+    return None, text.strip()
 
 
 def should_ignore(event: TriggerEvent) -> bool:

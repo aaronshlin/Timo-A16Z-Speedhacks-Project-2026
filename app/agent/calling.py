@@ -130,7 +130,7 @@ class CallService:
     def get_session(self, session_id):
         return next((s for s in self.sessions() if s['sessionId'] == session_id), None)
 
-    def submit(self, phone, rec, opportunity_id, event_id, metadata=None):
+    def submit(self, phone, rec, opportunity_id, event_id, metadata=None, script=None):
         validate_clock(self.config)
         if phone != self.config.DEMO_PHONE:
             return {'disposition': 'suppressed', 'reason': 'wrong_user'}
@@ -169,15 +169,20 @@ class CallService:
                     return {'disposition': 'suppressed', 'reason': 'session_budget'}
                 if prior and current_epoch - prior[-1][1] < self.config.CALL_COOLDOWN_SECONDS:
                     return {'disposition': 'suppressed', 'reason': 'cooldown'}
-            fixture = self.preview_next()
-            if not fixture:
-                return {'disposition': 'suppressed', 'reason': 'no_eligible_demo_session'}
-            rec = fixture_recommendation(fixture)
+            # A briefing call carries its own script; every other call is a demo-task conversation.
+            fixture = None
+            if script is None:
+                fixture = self.preview_next()
+                if not fixture:
+                    return {'disposition': 'suppressed', 'reason': 'no_eligible_demo_session'}
+                rec = fixture_recommendation(fixture)
             s = {'sessionId': str(uuid.uuid4()), 'idempotencyKey': str(uuid.uuid4()), 'opportunityId': opportunity_id,
                  'mode': 'live' if live else 'dry_run', 'status': 'reserved' if live else 'calls_disabled',
-                 'phone': phone, 'recommendation': rec.model_dump(mode='json'), 'createdAt': clock.now().isoformat(),
+                 'phone': phone, 'recommendation': rec.model_dump(mode='json') if rec else None, 'script': script,
+                 'createdAt': clock.now().isoformat(),
                  'createdEpoch': current_epoch, 'callId': None, 'decision': None, 'receiptStatus': None,
-                 'externalEffect': False, 'calendarTrigger': metadata, 'fixtureId': fixture['id'], 'fixture': fixture}
+                 'externalEffect': False, 'calendarTrigger': metadata,
+                 'fixtureId': fixture['id'] if fixture else None, 'fixture': fixture}
             db.execute('INSERT INTO opportunities VALUES (?,?,?,?,?,?)',
                        (opportunity_id, s['sessionId'], s['mode'], s['status'], current_epoch, json.dumps(s)))
             db.execute('INSERT INTO trigger_events VALUES (?,?)', (event_id, opportunity_id))
@@ -194,6 +199,8 @@ class CallService:
                 'sessionId': s['sessionId'], 'status': s['status'], 'mode': s['mode']}
 
     async def _dial(self, session):
+        if session.get('script'):
+            return await self._dial_briefing(session)
         async with self.engine.lock:
             item = next((i for i in self.engine.state['items'] if i['id'] == session['fixtureId']), None)
             if not item or any(item.get(key) != session['fixture'].get(key)
@@ -204,9 +211,46 @@ class CallService:
             _, result = await self.engine.trigger('johnson', item['id'])
             return result
 
+    async def _dial_briefing(self, session):
+        """Place a briefing call outside the demo-task queue.
+
+        The user acts mid-call through Timo's /mcp tools, so there is no task catalog or
+        conversation. The item has no options, so its webhooks take the Engine's per-item path:
+        a missed call reaches miss() and the transcript reaches on_result() as 'briefed'.
+        """
+        from app.agent.engine import DialHTTPError
+        engine = self.engine
+        if engine.env.get('LIVE_CALLS_ENABLED') != 'true':
+            return {'status': 'failed', 'error': 'Live calls disabled'}
+        item = {'id': session['sessionId'], 'user': 'johnson', 'priority': 0, 'status': 'placing',
+                'idempotencyKey': session['idempotencyKey'], 'title': 'Timo briefing',
+                'instruction': session['script'],
+                'receiptMessage': 'Timo briefing call finished; any actions ran during the call.'}
+        async with engine.lock:
+            engine.state['items'].append(item)
+            engine.save()  # Reserved before placement, like a fixture call.
+            try:
+                response = await engine.api('POST', '/calls', {
+                    'to': engine.env['USER_PHONE'], 'fromNumberId': engine.env['DIAL_FROM_NUMBER_ID'],
+                    'outboundInstruction': session['script'], 'language': 'en-US', 'maxCallDurationSeconds': 180,
+                }, {'Idempotency-Key': item['idempotencyKey']})
+                item['callId'] = response['call']['id']
+                if not isinstance(item['callId'], str) or not item['callId']:
+                    raise ValueError('Missing call.id')
+                item['status'] = 'queued'
+            except Exception as error:
+                item['status'] = 'failed' if isinstance(error, DialHTTPError) else 'call_unknown'
+                item['error'] = str(error) if isinstance(error, DialHTTPError) else 'Call response uncertain; reconcile in Dial before retrying'
+            engine.save()
+        return {'status': item['status'], 'callId': item.get('callId'), 'error': item.get('error')}
+
     def place(self, phone, rec):
         key = 'manual:' + str(uuid.uuid4())
         return self.submit(phone, rec, key, key)['disposition'] == 'accepted'
+
+    def place_script(self, phone, script):
+        key = 'briefing:' + str(uuid.uuid4())
+        return self.submit(phone, None, key, key, script=script)['disposition'] == 'accepted'
 
     def accept(self, event):
         if not self.engine:
@@ -233,6 +277,17 @@ class CallService:
                        receiptBody=f'Timo recorded {choice}: {rec.pick.title}. Demo only; no external work executed.')
         self._update(session)
 
+    def record_briefing(self, session, user_turns):
+        from app.brain import memory
+        said = ' '.join(turn for turn in user_turns if turn).strip()
+        if said:
+            # What the user said on the call, kept like a text: logged, and stated facts learned.
+            memory.log_interaction(session['phone'], 'in', 'call', said)
+            memory.learn(session['phone'], said, memory.PROFILE_KEYS)
+        session.update(status='resolved', decision='briefed', receiptStatus='dashboard_only',
+                       receiptBody='Timo briefing call finished; any actions ran during the call.')
+        self._update(session)
+
     def missed_text(self, rec, session):
         minutes = (session.get('calendarTrigger') or {}).get('usableMinutes')
         gap = f'{minutes}-min gap' if minutes else 'free block'
@@ -251,14 +306,32 @@ class CallService:
         session = self.get_session(item.get('opportunitySessionId', item['id']))
         if not session or session.get('fixtureId') or session.get('missTextSent'):
             return
-        from app.brain.state import set_last_pick
-        from app.phone.dial import send_sms
-        rec = Recommendation.model_validate(session['recommendation'])
-        # "go" is answered by sms_handler, which reads the last pick.
-        set_last_pick(session['phone'], rec)
-        sent = bool(await send_sms(self.config.DIAL_FROM_NUMBER_ID, session['phone'], self.missed_text(rec, session)))
+        if session.get('script'):
+            # A briefing call has no pick: text the plan it would have given, as text_details does.
+            sent = await asyncio.to_thread(self._text_briefing, session['phone'])
+            if sent is None:
+                return
+        else:
+            from app.brain.state import set_last_pick
+            from app.phone.dial import send_sms
+            rec = Recommendation.model_validate(session['recommendation'])
+            # "go" is answered by sms_handler, which reads the last pick.
+            set_last_pick(session['phone'], rec)
+            sent = bool(await send_sms(self.config.DIAL_FROM_NUMBER_ID, session['phone'], self.missed_text(rec, session)))
         session.update(missedReason=ended, missTextSent=sent)
         self._update(session)
+
+    def _text_briefing(self, phone):
+        """None when there is nothing to send."""
+        from app.brain import briefing, memory
+        from app.phone.dial import send_sms_now
+        text = briefing.details(phone)
+        if text is None:
+            return None
+        sent = bool(send_sms_now(phone, text))
+        if sent:
+            memory.log_interaction(phone, 'out', 'sms', text)
+        return sent
 
     async def on_missed(self, item, ended):
         # A failed text must not mark the webhook retryable; the call is still over.
@@ -274,7 +347,9 @@ class CallService:
         session = self.get_session(item.get('opportunitySessionId', item['id']))
         if not session:
             return
-        if session.get('fixtureId'):
+        if session.get('script'):
+            await asyncio.to_thread(self.record_briefing, session, item.get('userTurns', []))
+        elif session.get('fixtureId'):
             decision = item['decision']
             session.update(status={'go': 'resolved', 'next': 'skipped', 'hold': 'deferred'}[decision],
                 decision=decision, receiptStatus='dashboard_only', receiptBody=item['receiptBody'],

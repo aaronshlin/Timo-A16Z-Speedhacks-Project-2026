@@ -4,6 +4,9 @@ Send path confirmed in the Dial docs (Send an SMS):
 POST https://api.getdial.ai/v1/messages
 JSON fields to, fromNumberId, body. Bearer auth. Sending is not idempotent,
 so a failed send is never retried.
+
+send_sms_now(to, body) is the brain's sync path: real only with USE_MOCKS=0 and SMS_ENABLED=1,
+otherwise it lands in the outbox. Every text is recorded in the outbox either way.
 """
 
 import asyncio
@@ -20,6 +23,8 @@ log = logging.getLogger(__name__)
 
 # Docs curl is https://api.getdial.ai/v1/messages. Prose also mentions /api/v1.
 DIAL_BASE = "https://api.getdial.ai/v1"
+# The numbers API (and the call engine) use /api/v1.
+API = "https://api.getdial.ai/api/v1"
 
 outbox: list[str] = []
 thread: list[dict] = []
@@ -132,6 +137,39 @@ def clear_messages() -> None:
         thread.clear()
         outbox.clear()
         _last_ts = 0.0
+
+
+def api(method: str, path: str, body: dict | None = None) -> dict | None:
+    """One Dial REST call. None on any failure: logged, never raised."""
+    try:
+        response = httpx.request(
+            method,
+            API + path,
+            json=body,
+            headers={"Authorization": f"Bearer {settings.DIAL_API_KEY}"},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        log.warning("dial %s %s failed: %s", method, path, type(exc).__name__)
+        return None
+
+
+def send_sms_now(to: str, body: str, from_number_id: str | None = None) -> bool:
+    """Text `to` from Timo's number, or from `from_number_id` (the test user's number)."""
+    line = f"SMS {to}: {body}"
+    with _lock:
+        outbox.append(line)
+    print(line)
+    if settings.USE_MOCKS or not settings.SMS_ENABLED:
+        return True
+    sent = api(
+        "POST",
+        "/messages",
+        {"to": to, "fromNumberId": from_number_id or settings.DIAL_FROM_NUMBER_ID, "body": body},
+    )
+    return sent is not None
 
 
 async def send_sms(from_number_id: str, to: str, body: str) -> bool:
