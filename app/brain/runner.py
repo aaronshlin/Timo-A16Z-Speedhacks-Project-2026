@@ -9,7 +9,7 @@ from app.brain import briefing, memory, pending, planner, rules, state
 from app.brain.recommend import recommend
 from app.clock import now
 from app.models import FreeWindow, Memory, Recommendation, Situation, TriggerEvent
-from app.phone.dial import send_sms
+from app.phone.dial import send_sms_now
 from app.phone.notify import notify_user
 
 log = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ def _brief(event: TriggerEvent, mem: Memory) -> str | None:
     # A call is logged as text without the ask: text_details adds whatever still waits for a yes.
     text = briefing.text(phone, event, ask=channel == "sms")
     if channel == "sms":
-        send_sms(phone, text)
+        send_sms_now(phone, text)
     memory.log_interaction(phone, "out", channel, text, proactive=True)
     log.info(
         "run type=%s channel=%s offers=%d facts=%d",
@@ -77,7 +77,7 @@ def run(event: TriggerEvent) -> Recommendation | str | None:
         memory.log_interaction(phone, "in", "sms", body)
         reply = _answer_pending(phone, body)
         if reply is not None:
-            send_sms(phone, reply)
+            send_sms_now(phone, reply)
             memory.log_interaction(phone, "out", "sms", reply)
             log.info("run type=user_message answered pending action")
             return None

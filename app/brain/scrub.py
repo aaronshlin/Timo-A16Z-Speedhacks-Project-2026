@@ -16,7 +16,7 @@ import re
 from app.brain import llm, memory, state
 from app.config import settings
 from app.models import Fact, PendingAction
-from app.phone.dial import send_sms
+from app.phone.dial import send_sms_now
 
 log = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def start(phone: str, email: str | None = None, signature: str = "") -> str | No
         f"Quick check so I don't mix you up with someone else: {hints['name']}, {summary}. "
         "Is that you? Reply Y to add it to your profile, N if not."
     )
-    send_sms(phone, question)
+    send_sms_now(phone, question)
     memory.log_interaction(phone, "out", "sms", question)
     log.info("scrub phone=%s staged=%s pending=%s", phone, sorted(found), action.id)
     return question

@@ -5,7 +5,7 @@ POST https://api.getdial.ai/v1/messages
 JSON fields to, fromNumberId, body. Bearer auth. Sending is not idempotent,
 so a failed send is never retried.
 
-send_sms(to, body) is the brain's sync path: real only with USE_MOCKS=0 and SMS_ENABLED=1,
+send_sms_now(to, body) is the brain's sync path: real only with USE_MOCKS=0 and SMS_ENABLED=1,
 otherwise it lands in the outbox. Every text is recorded in the outbox either way.
 """
 
@@ -156,7 +156,7 @@ def api(method: str, path: str, body: dict | None = None) -> dict | None:
         return None
 
 
-def send_sms(to: str, body: str, from_number_id: str | None = None) -> bool:
+def send_sms_now(to: str, body: str, from_number_id: str | None = None) -> bool:
     """Text `to` from Timo's number, or from `from_number_id` (the test user's number)."""
     line = f"SMS {to}: {body}"
     with _lock:
@@ -172,7 +172,7 @@ def send_sms(to: str, body: str, from_number_id: str | None = None) -> bool:
     return sent is not None
 
 
-async def send_sms_async(from_number_id: str, to: str, body: str) -> bool:
+async def send_sms(from_number_id: str, to: str, body: str) -> bool:
     if settings.MOCK_DIAL:
         return True
     try:
@@ -191,7 +191,7 @@ async def send_sms_async(from_number_id: str, to: str, body: str) -> bool:
 
 async def timo_says(body: str) -> dict:
     entry = _append("timo", body, "pending")
-    ok = await send_sms_async(settings.DIAL_FROM_NUMBER_ID, user_e164(), body)
+    ok = await send_sms(settings.DIAL_FROM_NUMBER_ID, user_e164(), body)
     entry["status"] = "sent" if ok else "failed"
     line = f"SMS {user_e164()}: {body}"
     with _lock:
@@ -211,7 +211,7 @@ async def user_says(body: str) -> dict:
             daemon=True,
         ).start()
         return entry
-    ok = await send_sms_async(settings.USER_NUMBER_ID, timo_e164(), body)
+    ok = await send_sms(settings.USER_NUMBER_ID, timo_e164(), body)
     entry["status"] = "sent" if ok else "failed"
     return entry
 

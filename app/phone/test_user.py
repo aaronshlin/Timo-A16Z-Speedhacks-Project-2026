@@ -108,7 +108,7 @@ def on_text(sender: str, body: str) -> None:
         return
     reply = answer(body)
     if reply:
-        dial.send_sms(settings.DIAL_NUMBER, reply, from_number_id=settings.DIAL_USER_NUMBER_ID)
+        dial.send_sms_now(settings.DIAL_NUMBER, reply, from_number_id=settings.DIAL_USER_NUMBER_ID)
 
 
 def _first_answer(lines: list[str]) -> str | None:
@@ -124,7 +124,7 @@ def text(body: str) -> None:
     if not settings.USE_MOCKS and not (settings.SMS_ENABLED and settings.DIAL_NUMBER):
         raise ValueError("Real texts need SMS_ENABLED=1 and DIAL_NUMBER (Timo's E.164).")
     for _ in range(MAX_TURNS):
-        dial.send_sms(settings.DIAL_NUMBER or "timo", body, from_number_id=settings.DIAL_USER_NUMBER_ID)
+        dial.send_sms_now(settings.DIAL_NUMBER or "timo", body, from_number_id=settings.DIAL_USER_NUMBER_ID)
         if not settings.USE_MOCKS:
             return  # Dial delivers it; Timo's replies come back through the webhook to on_text
         seen = len(dial.outbox)

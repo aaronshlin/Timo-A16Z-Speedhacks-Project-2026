@@ -22,6 +22,12 @@ def compute_gap(current, events):
     from datetime import timedelta
     start = datetime.combine(current.date(), time.min, current.tzinfo) + timedelta(hours=settings.CALENDAR_ACTIVE_START_HOUR)
     end = datetime.combine(current.date(), time.min, current.tzinfo) + timedelta(hours=settings.CALENDAR_ACTIVE_END_HOUR)
+    if settings.CALL_DEMO_WINDOW_START or settings.CALL_DEMO_WINDOW_END:
+        demo_start = datetime.fromisoformat(settings.CALL_DEMO_WINDOW_START)
+        demo_end = datetime.fromisoformat(settings.CALL_DEMO_WINDOW_END)
+        if demo_start.tzinfo is None or demo_end.tzinfo is None or demo_start >= demo_end:
+            raise ValueError('Demo calling window must have valid timezone-aware bounds')
+        start, end = max(start, demo_start), min(end, demo_end)
     if not start <= current < end:
         return None
     busy = []
@@ -84,7 +90,7 @@ def run_tick_detailed(value=None):
     result.update(snapshot_complete=True, events_count=len(events), observed_at=observed.isoformat(),
                   gap={'start': window.start.isoformat(), 'end': window.end.isoformat(),
                        'usable_minutes_remaining': window.minutes, 'buffer_minutes': settings.CALENDAR_BUFFER_MINUTES})
-    log.info('calendar trigger disposition=%s usable_minutes=%s calls_enabled=%s', result['disposition'], window.minutes, settings.LIVE_CALLS_ENABLED)
+    log.info('calendar trigger disposition=%s reason=%s status=%s usable_minutes=%s calls_enabled=%s', result['disposition'], result.get('reason', '-'), result.get('status', '-'), window.minutes, settings.LIVE_CALLS_ENABLED)
     return result
 
 

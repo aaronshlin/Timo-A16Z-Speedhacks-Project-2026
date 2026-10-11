@@ -61,19 +61,20 @@ class VoiceTrigger(BaseModel):
 @router.post("/voice/trigger")
 def voice_trigger(body: VoiceTrigger):
     calls = service()
-    current = clock.now()
-    window = FreeWindow(start=current, end=current + timedelta(minutes=body.available_minutes), minutes=body.available_minutes)
-    try:
-        rec = recommend(window, "audio", get_profile(settings.DEMO_PHONE))
-    except RuntimeError:
-        return JSONResponse({"disposition": "suppressed", "reason": "insufficient_context"}, 200)
-    result = calls.submit(settings.DEMO_PHONE, rec, "manual:" + body.event_id, "manual:" + body.event_id)
+    result = calls.submit(settings.DEMO_PHONE, None, "manual:" + body.event_id, "manual:" + body.event_id)
     return JSONResponse(result, 202 if result["disposition"] == "accepted" else 200)
 
 
 @router.get("/voice/sessions")
 def voice_sessions():
     return JSONResponse(service().sessions(), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/voice/preview")
+def voice_preview():
+    calls = service()
+    item = calls.preview_next()
+    return {"next_session": item, "places_call": False, "context_storage": "local_only"}
 
 
 @router.post("/voice/calendar-gap")
@@ -95,9 +96,11 @@ def voice_readiness():
             "dial_from_number_id": config.DIAL_FROM_NUMBER_ID, "dial_number_e164": config.DIAL_NUMBER or None,
             "calendar_trigger_token_present": bool(settings.CALENDAR_TRIGGER_TOKEN),
             "calendar_trigger_path": "/voice/calendar-gap", "poller_enabled": settings.POLLER_ENABLED,
-            "session_limit": config.CALL_SESSION_LIMIT, "duration_cap_seconds": 180,
+            "session_limit": config.CALL_SESSION_LIMIT, "duration_cap_seconds": 180, "max_actions_per_call": 3,
+            "voice_tools_ready": bool(service().engine and service().engine.env.get("VOICE_TOOLS_ENABLED") == "true"),
             "calendar_writes_enabled": False, "sms_enabled": settings.SMS_ENABLED and not settings.USE_MOCKS, "external_execution": "disabled",
-            "receipt_mode": "dashboard", "task_context": "mock_data"}
+            "demo_calendar_calls_allowed": config.ALLOW_DEMO_CALENDAR_CALLS, "calendar_source": "mock_calendar" if settings.USE_MOCKS else "google_calendar",
+            "receipt_mode": "dashboard", "task_context": "demo_session_queue", "context_storage": "local_only"}
 
 
 
@@ -119,6 +122,8 @@ def mock_result(body: MockResult):
         if session["decision"] != body.choice:
             raise HTTPException(409, "This demo decision is already recorded")
         return {"disposition": "duplicate", "session": session}
+    if session.get('fixtureId'):
+        raise HTTPException(403, "Fixture results require a signed callback and verified task-specific transcript confirmation")
     if not body.confirmed:
         raise HTTPException(400, "Explicit demo confirmation is required")
     calls.record(session, body.choice)
@@ -144,7 +149,10 @@ async def dial_webhook(request: Request, background: BackgroundTasks):
                 or request.headers.get("x-dial-event-id") != event.get("id")
                 or event.get("type") not in ("call.ended", "call.transcribed", "message.received", "webhook.ping")
                 or not isinstance(event.get("data", {}), dict)
-                or not isinstance(event.get("relatedObject", {}), dict)):
+                # Dial readiness pings have no resource: relatedObject is null.
+                or (not isinstance(event.get("relatedObject", {}), dict)
+                    and not (event.get("type") == "webhook.ping"
+                             and event.get("relatedObject") is None))):
             raise ValueError("Invalid envelope")
     except (ValueError, UnicodeDecodeError):
         raise HTTPException(400, "Invalid event envelope")

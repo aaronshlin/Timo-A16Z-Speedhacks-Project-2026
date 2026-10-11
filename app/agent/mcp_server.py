@@ -20,7 +20,7 @@ from app.config import settings
 from app.context.todoist import get_tasks as load_tasks
 from app.brain.state import get_last_pick
 from app.agent.actions import prepare
-from app.phone.dial import send_sms
+from app.phone.dial import send_sms_now
 
 log = logging.getLogger(__name__)
 mcp = FastMCP("Timo")
@@ -114,7 +114,7 @@ def text_details(user_id: str) -> dict:
     text = briefing.details(phone) if phone else None
     if text is None:
         return _REFUSED if phone is None else {"ok": False, "say": "I don't have anything to send yet."}
-    sent = send_sms(phone, text)
+    sent = send_sms_now(phone, text)
     if sent:
         memory.log_interaction(phone, "out", "sms", text)
     log.info("tool=text_details user=%s ok=%s", phone, sent)

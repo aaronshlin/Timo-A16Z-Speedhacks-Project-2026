@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     DIAL_API_KEY: str = ""
     DIAL_NUMBER: str = ""
-    DIAL_FROM_NUMBER_ID: str = ""
     TIMO_NUMBER: str = "+15555550199"
     USER_NUMBER: str = ""
     USER_NUMBER_ID: str = ""
@@ -37,6 +36,10 @@ class Settings(BaseSettings):
     CALENDAR_ACTIVE_START_HOUR: int = 9
     CALENDAR_ACTIVE_END_HOUR: int = 18
     CALENDAR_BUFFER_MINUTES: int = Field(default=3, ge=0, le=30)
+    CALL_DEMO_WINDOW_START: str = ""
+    CALL_DEMO_WINDOW_END: str = ""
+    MOCK_CALENDAR_PATH: str = ""
+    ALLOW_DEMO_CALENDAR_CALLS: bool = False
     RECEIPT_MODE: str = "dashboard"
     # The second Dial number, which plays the user (phone/test_user.py). DEMO_PHONE is its E.164.
     DIAL_USER_NUMBER_ID: str = ""
