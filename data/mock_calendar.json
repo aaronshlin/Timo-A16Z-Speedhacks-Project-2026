@@ -1,7 +1,7 @@
 [
-  {"id": "evt-cs106b", "title": "CS 106B Lecture", "start": "08:30", "end": "10:15"},
-  {"id": "evt-math51", "title": "Math 51 Discussion", "start": "10:45", "end": "12:00"},
-  {"id": "evt-phys41", "title": "Physics 41 Lab", "start": "13:00", "end": "14:15"},
-  {"id": "evt-chem31a", "title": "Chem 31A Lecture", "start": "14:30", "end": "15:45"},
-  {"id": "evt-ee101", "title": "EE 101 Section", "start": "16:00", "end": "17:15"}
+  {"id": "evt-cs61b", "title": "CS 61B Lecture", "start": "08:30", "end": "10:15"},
+  {"id": "evt-math54", "title": "Math 54 Discussion", "start": "10:45", "end": "12:00"},
+  {"id": "evt-phys7a", "title": "Physics 7A Lab", "start": "13:00", "end": "14:15"},
+  {"id": "evt-chem1a", "title": "Chem 1A Lecture", "start": "14:30", "end": "15:45"},
+  {"id": "evt-ee16b", "title": "EE 16B Section", "start": "16:00", "end": "17:15"}
 ]
