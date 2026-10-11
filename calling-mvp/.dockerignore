@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+.timo-*
+.local
+.tools
+.venv
+__pycache__
+.pytest_cache
+*.log

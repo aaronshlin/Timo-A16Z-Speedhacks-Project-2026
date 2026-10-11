@@ -1,0 +1,35 @@
+name: timo-calling-demo
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: calling-mvp/Dockerfile
+    image: timo-calling-demo:local
+    init: true
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      LIVE_CALLS_ENABLED: "false"
+      CALL_OPT_IN: "false"
+      POLLER_ENABLED: "true"
+      USE_MOCKS: "false"
+      NOW_OVERRIDE: ""
+      RECEIPT_MODE: dashboard
+      GOOGLE_TOKEN_PATH: /workspace/token.json
+      CALL_ENGINE_STATE_PATH: /workspace/calling-mvp/.timo-state.json
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ..:/workspace
+      - ../data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.0
+    command: ["tunnel", "--no-autoupdate", "--url", "http://app:3000"]
+    init: true
+    profiles: ["live"]

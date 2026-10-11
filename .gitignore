@@ -9,3 +9,7 @@ __pycache__/
 credentials.json
 client_secret*.json
 token.json
+
+*.db-*
+calling-mvp/.timo-*.lock
+calling-mvp/.timo-running.json*

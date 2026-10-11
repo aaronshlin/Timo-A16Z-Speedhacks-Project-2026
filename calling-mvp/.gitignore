@@ -1,0 +1,16 @@
+.env
+.env.tmp
+.timo-state.json
+.timo-state.json.tmp
+.timo-setup.json
+.venv
+__pycache__/
+.pytest_cache/
+.tools
+.local
+.timo-*.log
+
+.venv/
+
+.timo-*.lock
+.timo-running.json*

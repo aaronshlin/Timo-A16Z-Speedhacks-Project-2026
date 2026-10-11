@@ -1,0 +1,14 @@
+.git
+**/.env
+**/.env.*
+**/token.json
+**/credentials.json
+**/client_secret*.json
+**/.timo-*
+**/.local
+**/.tools
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.db
+**/*.log
