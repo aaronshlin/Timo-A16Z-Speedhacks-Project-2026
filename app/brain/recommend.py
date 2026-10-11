@@ -2,6 +2,7 @@
 
 import logging
 
+from app.brain import llm, state
 from app.brain.ranking import rank_candidates
 from app.models import FreeWindow, Recommendation, Situation, UserProfile
 
@@ -25,6 +26,11 @@ def recommend(
         f"You have {window.minutes} minutes before {nxt}. "
         f"Do {pick.title}, about {pick.minutes} minutes."
     )
+    choice = llm.choose(window, situation, candidates, profile, state.get_facts(profile.phone))
+    if choice is not None:
+        pick = next(item for item in candidates if item.id == choice.pick_id)
+        reason = " ".join(choice.reason.split())
+        speech_text = choice.speech_text.strip()
     link = pick.url or ""
     sms_text = "\n".join(part for part in (reason, link, _OPTIONS) if part)
     auto_actions = (
@@ -38,11 +44,12 @@ def recommend(
         auto_actions=auto_actions,
     )
     log.info(
-        "window=%s situation=%s candidates=%s pick=%s actions=%s channel=%s",
+        "window=%s situation=%s candidates=%s pick=%s llm=%s actions=%s channel=%s",
         window.minutes,
         situation,
         [item.id for item in candidates],
         pick.id,
+        choice is not None,
         auto_actions,
         profile.channel,
     )

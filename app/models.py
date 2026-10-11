@@ -7,6 +7,8 @@ Situation = Literal["audio", "phone", "laptop"]
 TaskContext = Literal["noscreen", "phone", "laptop"]
 CandidateKind = Literal["task", "content"]
 Channel = Literal["sms", "call"]
+TriggerType = Literal["new_event", "free_slot", "pre_commute", "morning_plan", "user_message"]
+FactSource = Literal["user_said", "gmail", "scrub", "inferred"]
 
 
 class Event(BaseModel):
@@ -59,3 +61,42 @@ class UserProfile(BaseModel):
     channel: Channel = "sms"
     quiet_hours: tuple[int, int] | None = None
     affinity: dict[str, float] = Field(default_factory=dict)
+
+
+class TriggerEvent(BaseModel):
+    user_id: str
+    type: TriggerType
+    payload: dict = Field(default_factory=dict)
+    ts: datetime
+
+
+class Fact(BaseModel):
+    key: str
+    value: str
+    source: FactSource
+    confidence: float = 1.0
+    updated_at: datetime
+
+
+class Interaction(BaseModel):
+    ts: datetime
+    direction: Literal["out", "in"]
+    channel: Channel
+    text: str
+    proactive: bool = False
+    pick_id: str | None = None
+
+
+class PendingAction(BaseModel):
+    id: str
+    kind: str
+    summary: str
+    payload: dict = Field(default_factory=dict)
+    created_at: datetime
+
+
+class Memory(BaseModel):
+    profile: UserProfile
+    facts: list[Fact] = Field(default_factory=list)
+    recent: list[Interaction] = Field(default_factory=list)
+    pending: list[PendingAction] = Field(default_factory=list)
