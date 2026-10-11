@@ -30,7 +30,13 @@ def _at(day: date, hhmm: str) -> datetime:
 
 
 def _mock_events(day: date) -> list[Event]:
-    raw = json.loads(_PATH.read_text())
+    path = Path(settings.MOCK_CALENDAR_PATH) if settings.MOCK_CALENDAR_PATH else _PATH
+    raw = json.loads(path.read_text())
+    if settings.MOCK_CALENDAR_PATH:
+        if (not isinstance(raw, dict) or raw.get('date') != day.isoformat()
+                or raw.get('snapshot_complete') is not True or not isinstance(raw.get('events'), list)):
+            raise CalendarReadError('Incomplete or wrong-day demo calendar snapshot')
+        raw = raw['events']
     events = [
         Event(
             id=item["id"],

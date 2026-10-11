@@ -1,6 +1,6 @@
 # Calendar calls and manual calls
 
-The only app is `app.main:app`. Its single poller runs every 60 seconds, reads Eric's `calendar.get_events`, computes the current eligible gap, and calls the same typed `trigger_calendar_gap(CalendarGap)` function used by the HTTP receiver. There is one Dial HTTP client and one verified `Engine.trigger` implementation. The manual command uses that Engine too.
+The only app is `app.main:app`. Its single poller runs every 60 seconds, reads Eric's `calendar.get_events`, computes the current eligible gap, and calls the same typed `trigger_calendar_gap(CalendarGap)` function used by the HTTP receiver. There is one Dial HTTP client and one verified `Engine.trigger` implementation. The manual command uses that Engine too. Calendar and manual calls share the eligible task catalog and the same conversational approval flow.
 
 ## Local setup
 
@@ -35,16 +35,28 @@ In `calling-mvp`, using the locally installed Python (`../.venv/bin/python` also
 # Real calendar reads, call reservations, calls disabled:
 .venv/bin/python serve_calls.py
 
-# Explicitly enable the one-call demo budget and keep the server open:
+# Explicitly enable the persistent call budget and keep the server open:
 .venv/bin/python serve_calls.py --live
 
 # Existing command: one manual call, even without a connected calendar:
 .venv/bin/python first_call.py --call
 ```
 
-The manual command reuses a running live service when available; otherwise it starts the same main app with its poller disabled. It respects active-call, unknown-response, cooldown and session-budget protections. `CALL_SESSION_LIMIT=1` is a persistent budget, including uncertain attempts; restarting never resets it. Increase it explicitly in private config only when authorizing more demo calls.
+The manual command reuses a running live service when available; otherwise it starts the same main app with its poller disabled. It respects active-call, unknown-response, cooldown and session-budget protections. `CALL_SESSION_LIMIT=1` is a persistent budget, including uncertain attempts; restarting never resets it. Increase it explicitly in private config only when authorizing more calls.
 
-The launcher verifies the signed callback before sending a manual trigger. A live calendar producer waits for the signed callback readiness check too. Live mode has no `NOW_OVERRIDE` or fake-time ticks. The call proposes one audio-compatible recommendation and asks for **go / next / hold**, then an explicit **yes**. Receipts stay in `/voice/sessions`; calendar writes and SMS are disabled in all modes. Recommendations still use the scaffold's mock task/content data.
+The launcher verifies the signed callback and dedicated voice Context MCP connection before sending a manual trigger or allowing a live calendar producer to call. Live mode has no `NOW_OVERRIDE` or fake-time ticks. The agent waits for permission to talk, offers eligible tasks naturally, and can continue after a skip or task deferral. Each action needs its own supplied confirmation; at most three tasks may be approved per call. Skips do not consume that allowance. Read [DEMO_SESSIONS.md](DEMO_SESSIONS.md) for conversation, simulation, and recovery details. Receipts stay in `/voice/sessions`; all fixture actions are local simulations, and calendar writes and SMS remain disabled.
+
+## A 15-minute demo calling window
+
+From `calling-mvp`, choose a future window today in Los Angeles time:
+
+```bash
+.venv/bin/python serve_calls.py --live --demo-window 14:40-14:55
+```
+
+This limits eligible calling time to that interval while still reading the real Google calendar. It does not create calendar events or fake the clock. Real busy events still suppress calls. A 15-minute interval leaves 12 usable minutes after the 3-minute buffer; the poller must detect it while at least 10 usable minutes remain. An 8-minute interval does not qualify. Start the launcher ahead of the window so the public tunnel and signed callback are verified in time.
+
+The usual persistent opportunity reservation and persistent call budget still apply. Repeated ticks or a restart return the same session for the same interval. Keep the dedupe database; do not reset it to repeat a demo. The task catalog comes from the twelve supplied calling fixtures; student math and podcast picks are not used for the voice conversation. After the window ends the backend stays running and suppresses calendar calls outside the window.
 
 ## Optional external calendar producer
 
@@ -77,10 +89,11 @@ Substitute the launcher's printed port. Live callbacks require the local termina
 
 ## Validation
 
-Run the isolated suite from the repository root:
+For verification without placing a call, preview the next eligible task and run the isolated suite from the repository root:
 
 ```bash
+uv run python calling-mvp/preview_sessions.py
 uv run python -m unittest discover -s tests -v
 ```
 
-Google and Dial are mocked in tests; temporary databases isolate the repeat/restart, all-day, overlap, pagination, error, signature and manual-command checks from real user state. No live calls, calendar writes or SMS are issued by tests.
+The preview acquires the Engine state lock and leaves call placement disabled. Stop a running backend first; previewing newly ingested fixtures starts their stored TTLs without renewing existing ones. Google and Dial are mocked in tests; temporary databases isolate conversation confirmation/cap, multi-task recovery, repeat/restart, all-day, overlap, pagination, error, signature and manual-command checks from real user state. No live calls, calendar writes or SMS are issued by tests.
