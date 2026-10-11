@@ -87,20 +87,21 @@ def calendar_gap(body: CalendarGap, request: Request):
 
 
 @router.get("/voice/readiness")
-def voice_readiness():
+def voice_readiness(request: Request):
     config = service().config
     from app.context.oauth import token_path
     return {"real_calendar_reads": not settings.USE_MOCKS, "google_token_present": token_path().is_file(),
             "live_calls_enabled": config.LIVE_CALLS_ENABLED, "call_opt_in": config.CALL_OPT_IN, "signed_callback_ready": service().callbacks_ready,
-            "dial_credentials_present": bool(config.DIAL_API_KEY),
+            "dial_credentials_present": bool(config.DIAL_API_KEY), "enrolled_phone": config.DEMO_PHONE,
+            "main_tools_ready": bool(service().engine and service().engine.env.get("MAIN_TOOLS_ENABLED") == "true"),
             "dial_from_number_id": config.DIAL_FROM_NUMBER_ID, "dial_number_e164": config.DIAL_NUMBER or None,
             "calendar_trigger_token_present": bool(settings.CALENDAR_TRIGGER_TOKEN),
-            "calendar_trigger_path": "/voice/calendar-gap", "poller_enabled": settings.POLLER_ENABLED,
+            "calendar_trigger_path": "/voice/calendar-gap", "poller_enabled": bool(getattr(request.app.state, "calendar_poller", None)),
             "session_limit": config.CALL_SESSION_LIMIT, "duration_cap_seconds": 180, "max_actions_per_call": 3,
             "voice_tools_ready": bool(service().engine and service().engine.env.get("VOICE_TOOLS_ENABLED") == "true"),
-            "calendar_writes_enabled": False, "sms_enabled": settings.SMS_ENABLED and not settings.USE_MOCKS, "external_execution": "disabled",
+            "calendar_writes_enabled": False, "sms_enabled": settings.SMS_ENABLED and not settings.USE_MOCKS and not settings.MOCK_DIAL, "external_execution": "disabled",
             "demo_calendar_calls_allowed": config.ALLOW_DEMO_CALENDAR_CALLS, "calendar_source": "mock_calendar" if settings.USE_MOCKS else "google_calendar",
-            "receipt_mode": "dashboard", "task_context": "demo_session_queue", "context_storage": "local_only"}
+            "receipt_mode": "dashboard", "task_context": ["planner", "pending_actions", "task_fixtures"], "context_storage": "local_only"}
 
 
 

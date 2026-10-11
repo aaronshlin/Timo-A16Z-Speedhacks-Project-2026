@@ -1,6 +1,7 @@
 """Tell the user about a pick. The poller calls this synchronously, so the async Dial send is run to completion before returning."""
 
 import inspect
+import asyncio
 import logging
 
 from app.config import settings
@@ -21,14 +22,19 @@ async def _notify(phone: str, rec: Recommendation, channel: str) -> bool:
     if channel == "call":
         try:
             from app.agent.call import place_call
-            result = place_call(settings.DEMO_PHONE, rec)
+            result = await asyncio.to_thread(place_call, who, rec)
             if inspect.isawaitable(result):
                 result = await result
             called = bool(result)
         except Exception:
             log.exception("place_call failed; falling back to message only")
 
-    entry = await timo_says(format_pick(rec))
+    if called:
+        return True
+    from app.agent.calling import service
+    if channel == "call" and service().has_uncertain_call(who):
+        return False
+    entry = await timo_says(format_pick(rec), to=who)
     sent = entry.get("status") != "failed"
 
     log.info(

@@ -24,6 +24,10 @@ def _conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(
         """
+        CREATE TABLE IF NOT EXISTS integration_events (
+            event_key TEXT PRIMARY KEY,
+            recorded_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS fired_gaps (
             gap_key TEXT PRIMARY KEY,
             fired_at TEXT NOT NULL
@@ -185,3 +189,23 @@ def claim_pending(action_id: str) -> bool:
             (action_id,),
         )
     return cursor.rowcount == 1
+
+
+def claim_inbound_event(event_id: str) -> bool:
+    """Reserve a validated SMS before routing, shared by both webhook paths."""
+    with _conn() as conn:
+        cursor = conn.execute('INSERT OR IGNORE INTO integration_events VALUES (?,?)',
+                              ('sms:' + event_id, now().isoformat()))
+    return cursor.rowcount == 1
+
+
+def add_interaction_once(phone: str, item: Interaction, reference: str) -> bool:
+    """Result projection and its idempotency key commit in the same transaction."""
+    with _conn() as conn:
+        cursor = conn.execute('INSERT OR IGNORE INTO integration_events VALUES (?,?)',
+                              ('interaction:' + reference, now().isoformat()))
+        if cursor.rowcount != 1:
+            return False
+        conn.execute('INSERT INTO interactions(phone,ts,payload) VALUES (?,?,?)',
+                     (phone, item.ts.isoformat(), item.model_dump_json()))
+    return True

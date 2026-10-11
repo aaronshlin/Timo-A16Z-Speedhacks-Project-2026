@@ -108,6 +108,8 @@ class Engine:
         migrate_queue(self.state)
         self.state.setdefault('conversations', {})
         self.state.setdefault('action_jobs', {})
+        self.state.setdefault('text_proposals', {})
+        self.context_handler = None
         for conversation in self.state['conversations'].values():
             if conversation['status'] == 'placing':
                 conversation['status'] = 'call_unknown'
@@ -171,9 +173,12 @@ class Engine:
         catalog = sorted((copy.deepcopy(i) for i in self.state['items']
             if i['user'] == user and (i['id'] == item['id'] or eligible(i))),
             key=lambda i: (i['priority'], i['id']))
+        catalog = [entry for entry in catalog if entry['id'] == item['id']] + [entry for entry in catalog if entry['id'] != item['id']]
         conversation = {'id': conversation_id, 'primaryItemId': item['id'], 'user': user,
             'status': 'placing', 'callId': None, 'sessions': catalog, 'dispositions': {},
-            'approvals': {}, 'actionIds': [], 'maxActions': 3, 'createdAt': self._timestamp()}
+            'approvals': {}, 'actionIds': [], 'maxActions': 3, 'createdAt': self._timestamp(), 'channel': 'call'}
+        if self.context_handler:
+            conversation['memory'] = self.context_handler()
         self.state['conversations'][conversation_id] = conversation
         self.save()  # Immutable catalog and call reservation precede placement.
         from app.agent.conversation import build_instruction
@@ -181,7 +186,7 @@ class Engine:
             response = await self.api('POST', '/calls', {
                 'to': self.env['USER_PHONE'], 'fromNumberId': self.env['DIAL_FROM_NUMBER_ID'],
                 'outboundInstruction': build_instruction(item, catalog, conversation_id,
-                    self.env.get('VOICE_TOOLS_ENABLED') == 'true') if executable(item) else item.get('instruction') or instruction(item), 'language': 'en-US', 'maxCallDurationSeconds': 180
+                    self.env.get('VOICE_TOOLS_ENABLED') == 'true', profile_context=conversation.get('memory')) if executable(item) else item.get('instruction') or instruction(item), 'language': 'en-US', 'maxCallDurationSeconds': 180
             }, {'Idempotency-Key': item['idempotencyKey']})
             item['callId'] = response['call']['id']
             if not isinstance(item['callId'], str) or not item['callId']:
@@ -315,6 +320,9 @@ class Engine:
         if require_available and disposition:
             raise ValueError('Task already handled in this conversation')
         if require_available:
+            actual = next((i for i in self.state['items'] if i['id'] == item['id']), {})
+            if actual.get('decision') != 'pending' or actual.get('status') not in ('pending', 'placing', 'queued', 'awaiting_transcript'):
+                raise ValueError('Task was already handled in another conversation')
             candidate = {**item, 'status': 'pending', 'decision': 'pending'}
             if not eligible(candidate):
                 raise ValueError('Task opportunity has expired')
@@ -325,7 +333,10 @@ class Engine:
         result = []
         for item in conversation['sessions']:
             candidate = {**item, 'status': 'pending', 'decision': 'pending'}
-            if item['id'] not in conversation['dispositions'] and eligible(candidate):
+            actual = next((i for i in self.state['items'] if i['id'] == item['id']), {})
+            if (item['id'] not in conversation['dispositions'] and eligible(candidate)
+                    and actual.get('decision') == 'pending'
+                    and actual.get('status') in ('pending', 'placing', 'queued', 'awaiting_transcript')):
                 result.append(speech_item(item))
         return result
 
@@ -345,7 +356,7 @@ class Engine:
             c = self._conversation(conversation_id)
             return {'conversation_id': conversation_id, 'tasks': self._public_tasks(c),
                     'approved_count': len(c['actionIds']), 'max_actions': 3,
-                    'execution_mode': 'simulate', 'calendar_source': calendar_source,
+                    'execution_mode': 'simulate', 'memory': copy.deepcopy(c.get('memory', {})), 'calendar_source': calendar_source,
                     'calendar_events': calendar_events, 'calendar_snapshot_complete': calendar_error is None,
                     'calendar_note': calendar_error or 'These events came from the current calendar read.'}
 
@@ -429,13 +440,18 @@ class Engine:
             previous = c['dispositions'].get(item['id'])
             if previous:
                 return {'status': previous['status'], 'duplicate': True}
-            self._set_disposition(c, item, disposition)
+            if not self._set_disposition(c, item, disposition):
+                actual = next(i for i in self.state['items'] if i['id'] == item['id'])
+                return {'status': actual.get('actionStatus') or actual['status'], 'duplicate': True, 'next_tasks': self._public_tasks(c)}
             c['approvals'].clear()
             self.save()
             return {'status': c['dispositions'][item['id']]['status'],
                     'next_tasks': self._public_tasks(c), 'continue_conversation': True}
 
     def _set_disposition(self, conversation, snapshot, decision):
+        actual = next((i for i in self.state['items'] if i['id'] == snapshot['id']), {})
+        if actual.get('decision') != 'pending':
+            return False
         record = {'decision': decision, 'status': {'next': 'skipped', 'hold': 'deferred'}[decision],
                   'at': self._timestamp(), 'actionStatus': 'not_executed'}
         conversation['dispositions'][snapshot['id']] = record
@@ -444,11 +460,15 @@ class Engine:
             item.update(decision=decision, status=record['status'], receiptStatus='dashboard_only',
                         receiptBody='Simulation only: ' + record['status'].capitalize() + ' ' + item['title'] + '.',
                         actionStatus='not_executed', contextStorage='local_only', conversationId=conversation['id'])
+        return True
 
     def _queue_action(self, conversation, snapshot, proof):
         result_id = 'mock:' + conversation['id'] + ':' + snapshot['id']
         if result_id in self.state['action_jobs'] or result_id in self.state['mock_results']:
             return result_id
+        actual = next((i for i in self.state['items'] if i['id'] == snapshot['id']), {})
+        if actual.get('decision') != 'pending':
+            raise ValueError('Task was already handled in another channel')
         if len(conversation['actionIds']) >= 3:
             raise ValueError('Three-action conversation limit reached')
         from app.agent.conversation import speech_item
@@ -498,11 +518,15 @@ class Engine:
                         result.update(context_storage='local_only', mirror_status='unavailable')
                     self.save()
             job['status'] = 'finished'
+            if conversation.get('channel') == 'sms':
+                conversation['status'] = 'sms_finished'
             conversation['dispositions'][item['id']]['status'] = 'finished'
             item.update(status='resolved', actionStatus='finished', receiptBody=result['receipt'],
                         contextStorage=result['context_storage'], resultId=result_id)
         except Exception:
             job['status'] = 'failed'
+            if conversation.get('channel') == 'sms':
+                conversation['status'] = 'sms_failed'
             conversation['dispositions'][item['id']]['status'] = 'failed'
             item.update(status='needs_review', actionStatus='failed',
                         error='Local simulated action failed; no external operation performed')
@@ -533,6 +557,9 @@ class Engine:
         if call.get('id') != call_id or not (call.get('transcript') or call.get('transcriptTurns')):
             raise ValueError('Transcript not yet available or unexpected call record')
         from app.agent.conversation import extract_conversation
+        from app.agent.demo_sessions import transcript_turns
+        conversation['userTurns'] = [str(t.get('text') or '') for t in transcript_turns(call)
+            if str(t.get('speaker') or '').lower() in ('user', 'human', 'caller', 'person')]
         decisions = extract_conversation(call, conversation['sessions'])
         verified = {d['itemId']: d['decision'] for d in decisions}
         for decision in decisions:
@@ -541,7 +568,8 @@ class Engine:
                 continue
             if decision['decision'] == 'go':
                 candidate = {**snapshot, 'status': 'pending', 'decision': 'pending'}
-                if len(conversation['actionIds']) < 3 and eligible(candidate):
+                actual = next((i for i in self.state['items'] if i['id'] == snapshot['id']), {})
+                if len(conversation['actionIds']) < 3 and eligible(candidate) and actual.get('decision') == 'pending':
                     result_id = self._queue_action(conversation, snapshot,
                         {'source': 'verified_transcript', 'callId': call_id, 'at': self._timestamp()})
                     await self._run_action(result_id)
@@ -562,6 +590,103 @@ class Engine:
                 item = next(i for i in self.state['items'] if i['id'] == snapshot['id'])
                 if snapshot['id'] in conversation['dispositions']:
                     await self.result_handler(item)
+
+    def _text_offer(self, phone, item_id, context_id):
+        from app.agent.conversation import speech_item
+        item = next((i for i in self.state['items'] if i['id'] == item_id), None)
+        if not item or not eligible(item):
+            return 'That task is no longer available. Ask for the next task.'
+        spoken = speech_item(item)
+        c = {'id': context_id, 'primaryItemId': item['id'], 'user': 'johnson', 'phone': phone,
+             'channel': 'sms', 'status': 'sms_offered', 'callId': None, 'sessions': [copy.deepcopy(item)],
+             'dispositions': {}, 'approvals': {}, 'actionIds': [], 'maxActions': 3, 'createdAt': self._timestamp()}
+        self.state['conversations'][context_id] = c
+        lines = [spoken['say']]
+        if spoken['recipient']:
+            lines.append('To: ' + spoken['recipient'])
+        if spoken['draft']:
+            lines.append(spoken['draft'])
+        lines.extend([spoken['confirmation'], 'Reply Y to confirm, N to skip, or hold to defer. Actions are simulated.'])
+        message = '\n'.join(lines)
+        self.state['text_proposals'][phone] = {'conversationId': context_id, 'itemId': item_id,
+            'at': self._timestamp(), 'delivered': False, 'message': message}
+        self.save()
+        return message
+
+    async def text_offer(self, phone, item_id, context_id):
+        async with self.lock:
+            return self._text_offer(phone, item_id, context_id)
+
+    async def mark_text_delivery(self, phone, context_id, delivered):
+        async with self.lock:
+            reference = self.state['text_proposals'].get(phone)
+            if reference and reference['conversationId'] == context_id:
+                reference['delivered'] = bool(delivered)
+                self.save()
+
+    async def mark_text_reply_delivery(self, phone, message, delivered):
+        async with self.lock:
+            reference = self.state['text_proposals'].get(phone)
+            if reference and reference.get('message') == message:
+                reference['delivered'] = bool(delivered)
+                self.save()
+
+    async def clear_text_proposal(self, phone):
+        async with self.lock:
+            self.state['text_proposals'].pop(phone, None)
+            self.save()
+
+    async def text_reply(self, phone, body):
+        async with self.lock:
+            reference = self.state['text_proposals'].get(phone)
+            word = str(body).strip().lower()
+            if word in ('next', 'another task', 'what else', 'what else can you help with?'):
+                if not reference:
+                    return None
+                if reference:
+                    c = self.state['conversations'][reference['conversationId']]
+                    item = next((i for i in c['sessions'] if i['id'] == reference['itemId']), None)
+                    actual = next((i for i in self.state['items'] if i['id'] == reference['itemId']), {})
+                    if item and actual.get('decision') == 'pending':
+                        self._set_disposition(c, item, 'next')
+                        c['status'] = 'sms_skipped'
+                        if self.result_handler:
+                            await self.result_handler(actual)
+                item = self.next_pending()
+                if not item:
+                    self.save()
+                    return 'There are no unexpired pending tasks right now.'
+                return self._text_offer(phone, item['id'], 'sms:' + str(uuid.uuid4()))
+            if not reference:
+                return None
+            c = self.state['conversations'][reference['conversationId']]
+            snapshot = next(i for i in c['sessions'] if i['id'] == reference['itemId'])
+            actual = next((i for i in self.state['items'] if i['id'] == snapshot['id']), {})
+            if word in ('y', 'n'):
+                word = {'y': 'yes', 'n': 'no'}[word]
+            choice = intent(word, snapshot)
+            if choice is None:
+                if word in ('bus', 'scooter', 'walk', 'laptop', 'audio') or re.fullmatch(r'\d+\s*(?:min|minutes)(?: on the (?:bus|scooter))?', word):
+                    return None
+                return 'Please clarify this task before approving it. No action was taken.'
+            if not reference.get('delivered'):
+                return 'The task confirmation was not delivered. No action was taken. Ask for the next task.'
+            if actual.get('decision') != 'pending':
+                return 'That task was already handled; no action was repeated. Ask for the next task.'
+            if not eligible(actual):
+                return 'That task has expired. No action was taken. Ask for the next task.'
+            if choice in ('next', 'hold'):
+                self._set_disposition(c, snapshot, choice)
+                c['status'] = 'sms_' + ('skipped' if choice == 'next' else 'deferred')
+                self.save()
+                if self.result_handler:
+                    await self.result_handler(actual)
+                return 'Skipped that task.' if choice == 'next' else 'Deferred that task.'
+            result_id = self._queue_action(c, snapshot,
+                {'source': 'attributed_sms_reply', 'userText': body, 'at': self._timestamp()})
+            await self._run_action(result_id)
+            job = self.state['action_jobs'][result_id]
+            return self.state['mock_results'][result_id]['receipt'] if job['status'] == 'finished' else 'The simulation failed; no external action was performed.'
 
     async def worker(self):
         while True:

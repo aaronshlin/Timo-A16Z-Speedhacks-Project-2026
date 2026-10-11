@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import time
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Request
@@ -24,7 +25,7 @@ from app.phone.dial import (
     user_e164,
     user_says_now,
 )
-from app.phone.sms_handler import canonical_user, handle_reply, reset_memory
+from app.phone.sms_handler import canonical_user, handle_dial_message, handle_reply, reset_memory
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -71,10 +72,9 @@ def _recipient(data: dict) -> str:
 
 
 def _verify(raw: bytes, header: str | None) -> bool:
-    secret = settings.DIAL_SMS_WEBHOOK_SECRET
+    secret = settings.DIAL_SMS_WEBHOOK_SECRET or settings.DIAL_WEBHOOK_SECRET
     if not secret:
-        log.warning("DIAL_SMS_WEBHOOK_SECRET is empty; skipping webhook signature check")
-        return True
+        return settings.USE_MOCKS and settings.MOCK_DIAL
     if not header:
         return False
     parts: dict[str, str] = {}
@@ -105,7 +105,7 @@ def _log_first_payload(payload: dict) -> None:
     if _logged_payload:
         return
     _logged_payload = True
-    log.info("dial inbound payload %s", json.dumps(payload))
+    log.info("dial inbound event id=%s type=%s", payload.get("id"), payload.get("type"))
 
 
 @router.post("/sms/inbound")
@@ -119,42 +119,30 @@ async def inbound(request: Request, background: BackgroundTasks):
             payload = Inbound.model_validate_json(raw)
         except Exception:
             return JSONResponse({"reply": "bad request"}, status_code=400)
-        reply = handle_reply(payload.from_number, payload.body)
-        return {"reply": reply}
+        if not settings.USE_MOCKS:
+            expected = 'Bearer ' + settings.CALL_TRIGGER_TOKEN
+            if not settings.CALL_TRIGGER_TOKEN or not hmac.compare_digest(request.headers.get('authorization', ''), expected):
+                return JSONResponse({'reply': 'Private operator credential required'}, status_code=401)
+        event = {'id': 'local:' + uuid.uuid4().hex, 'type': 'message.received',
+                 'data': {'from': payload.from_number, 'to': settings.DIAL_NUMBER or settings.TIMO_NUMBER, 'body': payload.body}}
+        reply = await asyncio.to_thread(handle_dial_message, event, return_reply=True)
+        return {'reply': reply}
 
     if not _verify(raw, signature):
         return JSONResponse({"ok": False}, status_code=401)
-    if event_id:
-        if event_id in _seen_events:
-            return {"ok": True, "duplicate": True}
-        _seen_events.add(event_id)
     if event_type != "message.received":
         return {"ok": True}
-
     try:
         payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return {"ok": True}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JSONResponse({"ok": False}, status_code=400)
+    if (not isinstance(payload, dict) or not event_id
+            or payload.get("id") != event_id or payload.get("type") != event_type
+            or not isinstance(payload.get("data"), dict)):
+        return JSONResponse({"ok": False}, status_code=400)
     _log_first_payload(payload)
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(data, dict):
-        return {"ok": True}
-
-    sender = str(data.get("from") or "")
-    recipient = _recipient(data)
-    body = str(data.get("body") or "")
-    to_who = _who(recipient)
-    from_who = _who(sender)
-
-    if to_who == "timo" and from_who == "user":
-        remember_user_message(body)
-        background.add_task(handle_reply, user_e164(), body)
-        return {"ok": True}
-    if to_who == "user" and from_who == "timo":
-        mark_timo_delivered(body)
-        return {"ok": True}
-    log.info("ignoring sms to=%s from=%s", recipient, sender)
-    return {"ok": True}
+    background.add_task(handle_dial_message, payload)
+    return {'ok': True}
 
 
 @router.get("/inbox")

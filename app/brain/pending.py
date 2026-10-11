@@ -40,7 +40,7 @@ def _send_email(phone: str, action: PendingAction) -> tuple[bool, str]:
     if action.payload.get("demo"):
         # Seeded by phone/test_user.py for the demo: there is no real draft to send.
         log.info("send_email phone=%s action=%s simulated", phone, action.id)
-        return True, "Done, I sent it."
+        return True, "Simulation finished. No email was sent."
     try:
         from app.context import gmail
     except ImportError:

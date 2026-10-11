@@ -38,14 +38,14 @@ def speech_item(item):
     return data
 
 
-def build_instruction(primary, sessions=None, conversation_id=None, tools_enabled=False):
+def build_instruction(primary, sessions=None, conversation_id=None, tools_enabled=False, profile_context=None):
     sessions = list(sessions or [primary])
-    if primary.get('id') not in {item.get('id') for item in sessions}:
-        sessions.insert(0, primary)
+    sessions = [primary] + [item for item in sessions if item.get('id') != primary.get('id')]
     catalog = [speech_item(item) for item in sessions]
+    name = speech_text((profile_context or {}).get("name") or "Johnson")
     lines = [
-        'You are Timo, Johnson\'s conversational personal assistant.',
-        'Open with: "Hey Johnson, is now a good time?" Then WAIT for the person to answer before offering a task. Permission to talk is never permission to perform a task.',
+        f"You are Timo, {name}\'s conversational personal assistant.",
+        f'Open with: "Hey {name}, is now a good time?" Then WAIT for the person to answer before offering a task. Permission to talk is never permission to perform a task.',
         'Use the full meaning of ordinary speech and the conversation context, not exact keywords or scripted responses. Never read menus, internal task IDs, decision labels, tool names, or a list of options aloud.',
         'Start with the first supplied task. Speak its say naturally, using only supplied context and answer_notes. Offer one task at a time and allow a continuing conversation.',
         'If the person declines the current task or asks for other things you can help with, skip this suggestion and offer the next relevant available task in the SAME call. A compound reply such as "No, I am good, let us talk about other tasks; what can you help with?" means skip this task and continue.',
@@ -74,6 +74,8 @@ def build_instruction(primary, sessions=None, conversation_id=None, tools_enable
         lines.append('There are NO live conversation tools in this call. Confirmed approvals are recorded for processing only AFTER the attributed call transcript is verified. Say "I have recorded that for verification after this call"; do not claim work is already queued, running, or finished. You may still discuss and confirm up to three tasks.')
     if conversation_id:
         lines.append('Conversation reference for tool calls only: ' + str(conversation_id))
+    if profile_context:
+        lines.append('SHARED MEMORY DATA: ' + json.dumps(profile_context, ensure_ascii=False))
     lines.append('TASK DATA: ' + json.dumps(catalog, ensure_ascii=False))
     return '\n'.join(lines)
 

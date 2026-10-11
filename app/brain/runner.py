@@ -2,6 +2,7 @@
 Doing nothing is a valid outcome."""
 
 import logging
+import re
 
 from app.agent.actions import run_auto_actions
 from app.agent.call import call_user
@@ -37,6 +38,8 @@ def _answer_pending(phone: str, body: str) -> str | None:
     yes, rest = rules.parse_yes_no(body)
     if yes is None:
         return None
+    if yes and re.search(r"\b(?:don't|do not|never|not|instead|change|different)\b", rest, re.I):
+        return 'Please clarify the current proposal before confirming it. No action was taken.'
     _, reply = pending.answer(phone, action, yes)
     if rest:
         memory.learn(phone, rest, memory.PROFILE_KEYS)
@@ -52,7 +55,10 @@ def _brief(event: TriggerEvent, mem: Memory) -> str | None:
         log.info("run type=%s holding: quiet hours or rate limit", event.type)
         return None
     if channel == "call" and not call_user(phone, briefing.script(phone, event)):
-        channel = "sms"  # the call didn't go out, so text instead
+        from app.agent.calling import service
+        if service().has_uncertain_call(phone):
+            return None
+        channel = "sms"  # No uncertain placement is retried or double-notified.
     # A call is logged as text without the ask: text_details adds whatever still waits for a yes.
     text = briefing.text(phone, event, ask=channel == "sms")
     if channel == "sms":
@@ -68,26 +74,44 @@ def _brief(event: TriggerEvent, mem: Memory) -> str | None:
     return f"briefed by {channel}"
 
 
-def run(event: TriggerEvent) -> Recommendation | str | None:
-    phone = event.user_id
+def run(event: TriggerEvent) -> Recommendation | str | dict | None:
+    from app.phone.sms_handler import canonical_user
+    phone = canonical_user(event.user_id)
+    event = event.model_copy(update={"user_id": phone})
     if event.type == "user_message":
         from app.phone.sms_handler import handle_reply
 
         body = str(event.payload.get("body", ""))
-        memory.log_interaction(phone, "in", "sms", body)
+        reference = event.payload.get("event_id")
+        memory.log_interaction(phone, "in", "sms", body,
+                               event_id=f"sms:{reference}:in" if reference else None)
+        from app.agent.calling import service
+        reply = service().text_reply(phone, body)
+        if reply is not None:
+            delivered = send_sms_now(phone, reply)
+            service().mark_text_reply_delivery(phone, reply, delivered)
+            memory.log_interaction(phone, "out", "sms", reply,
+                                   event_id=f"sms:{reference}:out" if reference else None)
+            return reply
         reply = _answer_pending(phone, body)
         if reply is not None:
             send_sms_now(phone, reply)
-            memory.log_interaction(phone, "out", "sms", reply)
+            memory.log_interaction(phone, "out", "sms", reply,
+                                   event_id=f"sms:{reference}:out" if reference else None)
             log.info("run type=user_message answered pending action")
-            return None
-        handle_reply(phone, body)
-        return state.get_last_pick(phone)
+            return reply if event.payload.get("return_reply") else None
+        reply = handle_reply(phone, body)
+        memory.log_interaction(phone, "out", "sms", reply,
+                               event_id=f"sms:{reference}:out" if reference else None)
+        return reply if event.payload.get("return_reply") else state.get_last_pick(phone)
 
     if rules.should_ignore(event):
         log.info("run type=%s ignored: source=timo", event.type)
         return None
     mem = memory.load(phone)
+    if event.type == 'free_slot' and event.payload.get('calendar_gap'):
+        from app.agent.calling import service
+        return service().handle_gap(event, mem)
     if event.type in BRIEFED:
         event = planner.enrich(event)
         if not briefing.plan(event):

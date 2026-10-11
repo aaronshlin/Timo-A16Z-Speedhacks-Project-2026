@@ -99,7 +99,8 @@ def run_tick(now=None) -> Recommendation | None:
     if 'sessionId' not in result or result['disposition'] != 'accepted':
         return None
     from app.agent.calling import service
-    return Recommendation.model_validate(service().get_session(result['sessionId'])['recommendation'])
+    proposal = service().get_session(result['sessionId']).get('recommendation')
+    return Recommendation.model_validate(proposal) if proposal else None
 
 
 async def poll_loop():

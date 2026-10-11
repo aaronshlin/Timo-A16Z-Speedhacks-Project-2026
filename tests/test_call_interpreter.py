@@ -102,7 +102,7 @@ class CallInterpreterTests(unittest.TestCase):
 
     def test_a_texted_y_runs_the_offer_once(self):
         test_user.text('Y')
-        self.assertEqual(dial.outbox, [f'SMS {TIMO}: Y', f'SMS {PHONE}: Done, I sent it.'])
+        self.assertEqual(dial.outbox, [f'SMS {TIMO}: Y', f'SMS {PHONE}: Simulation finished. No email was sent.'])
         self.assertEqual(state.get_pending(PHONE), [])
         self.assertIsNone(runner.run(trigger('user_message', {'body': 'Y'})))  # nothing left to answer
 
@@ -118,7 +118,7 @@ class CallInterpreterTests(unittest.TestCase):
             raw, headers = signed(to_timo)
             client.post('/webhooks/dial', content=raw, headers=headers)
             client.post('/webhooks/dial', content=raw, headers=headers)  # Dial retries: handled once
-            self.assertEqual(dial.outbox[1:], [f'SMS {PHONE}: Done, I sent it.'])
+            self.assertEqual(dial.outbox[1:], [f'SMS {PHONE}: Simulation finished. No email was sent.'])
             self.assertEqual(state.get_pending(PHONE), [])
             raw, headers = signed({**to_timo, 'id': 'evt-forged'})
             headers['X-Dial-Signature'] = headers['X-Dial-Signature'][:-4] + '0000'
@@ -150,7 +150,7 @@ class CallInterpreterTests(unittest.TestCase):
                 # The test user's own agent sees the account-wide tools too; it must not act.
                 self.assertEqual(asyncio.run(call('approve_action', approve, agent=PHONE))['ok'], False)
                 self.assertEqual(len(state.get_pending(PHONE)), 1)
-                self.assertEqual(asyncio.run(call('approve_action', approve)), {'ok': True, 'say': 'Done, I sent it.'})
+                self.assertEqual(asyncio.run(call('approve_action', approve)), {'ok': True, 'say': 'Simulation finished. No email was sent.'})
                 self.assertEqual(asyncio.run(call('approve_action', approve))['say'], "That one's already taken care of.")
                 self.assertEqual(asyncio.run(call('text_details', {'user_id': PHONE}))['ok'], True)
                 self.assertEqual(dial.outbox, [f'SMS {PHONE}: Leave at 8:25am for the Berkeley campus.'])

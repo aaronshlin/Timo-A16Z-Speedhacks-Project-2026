@@ -10,7 +10,8 @@ def main():
     parser.add_argument('--ticks', type=int, default=2)
     args = parser.parse_args()
     os.environ.update(USE_MOCKS='0', LIVE_CALLS_ENABLED='false', CALL_OPT_IN='false', POLLER_ENABLED='false',
-                      NOW_OVERRIDE='', CALL_STATE_PATH=args.state_path, RECEIPT_MODE='dashboard')
+                      NOW_OVERRIDE='', CALL_STATE_PATH=args.state_path, RECEIPT_MODE='dashboard',
+                      SMS_ENABLED='false', MOCK_DIAL='true')
     from app.agent.poller import run_tick_detailed
     from app.agent.calling import service
     from app.context.oauth import token_path

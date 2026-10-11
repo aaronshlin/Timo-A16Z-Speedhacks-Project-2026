@@ -61,8 +61,15 @@ def trigger_calendar_gap(body, current=None):
     usable = int((body.end - current).total_seconds() // 60) - settings.CALENDAR_BUFFER_MINUTES
     window = FreeWindow(start=current, end=body.end, minutes=min(120, usable),
                         next_event_title=body.next_event_title or 'the end of this free block')
-    result = calls.submit(settings.DEMO_PHONE, None, key, 'gcal:event:' + body.event_id,
-                          {'observedAt': body.observed_at.isoformat(), 'start': body.start.isoformat(),
-                           'end': body.end.isoformat(), 'calendarsChecked': body.calendars_checked,
-                           'usableMinutes': usable, 'source': body.source})
+    from app.context.router import dispatch
+    from app.models import TriggerEvent
+    metadata = {'observedAt': body.observed_at.isoformat(), 'start': body.start.isoformat(),
+                'end': body.end.isoformat(), 'calendarsChecked': body.calendars_checked,
+                'usableMinutes': usable, 'source': body.source}
+    result = dispatch(TriggerEvent(user_id=settings.DEMO_PHONE, type='free_slot', ts=current,
+        payload={'window': window.model_dump(mode='json'), 'calendar_gap': {
+            'opportunity_id': key, 'event_id': 'gcal:event:' + body.event_id, 'metadata': metadata}}))
+    if not isinstance(result, dict):
+        result = {'disposition': 'suppressed', 'reason': 'brain_run_failed'}
+
     return (202 if result['disposition'] == 'accepted' else 200), result
