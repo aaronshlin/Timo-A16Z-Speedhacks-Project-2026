@@ -1,0 +1,5 @@
+#!/bin/sh
+# Strip AI attribution trailers and "generated with" lines from commit messages.
+f="$1"
+grep -viE '^co-authored-by:.*(claude|cursor|anthropic|copilot|openai|codex|gemini)|generated (with|by) .*(claude|cursor|copilot|ai)|made with .*(claude|cursor)' "$f" > "$f.tmp" || true
+mv "$f.tmp" "$f"

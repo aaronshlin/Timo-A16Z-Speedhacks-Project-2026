@@ -1,0 +1,8 @@
+---
+description: Timo project rules (applies to every agent request)
+alwaysApply: true
+---
+
+Follow @AGENTS.md at the repo root for all work in this project.
+
+Non-negotiable: never add Cursor, Claude, or any AI as an author, co-author, or contributor in commits, PRs, comments, or docs. No Co-authored-by trailers and no "Generated with/Made with" lines.
