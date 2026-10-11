@@ -203,6 +203,62 @@ class CalendarTests(unittest.TestCase):
                 self.assertEqual(len([r for r in requests if r.method=='POST']),1)
                 self.assertEqual(client.post('/sms/inbound',json={}).status_code,403)
 
+    def test_unanswered_call_texts_once_and_answered_call_texts_never(self):
+        async def exercise():
+            engine=Engine({'LIVE_CALLS_ENABLED':'false'},self.root/'engine.json',None)
+            service=calling.service(); service.bind(engine,asyncio.get_running_loop())
+            self.assertIsNotNone(engine.miss_handler)
+
+            # Every case below is a real reserved session, so the only thing that can
+            # stop a text is the status gate, not a missing session lookup.
+            def session_for(opportunity, call_id):
+                service.submit(PHONE,REC,opportunity,'ev-'+opportunity)
+                row=next(s for s in service.sessions() if s['opportunityId']==opportunity)
+                row['callId']=call_id; service._update(row)
+                engine.state['items'].append({'id':row['sessionId'],'callId':call_id,'status':'queued'})
+                return row
+
+            missed=session_for('op-miss','c-miss')
+            session_for('op-fail','c-fail')
+            session_for('op-ok','c-ok')
+
+            sent=[]
+            with patch('app.phone.dial.send_sms',side_effect=lambda to,body:(sent.append(body) or True)):
+                # Rang and nobody picked up: exactly one text.
+                await engine.event({'id':'e1','type':'call.ended','data':{'callId':'c-miss','status':'no-answer'}})
+                self.assertEqual(len(sent),1,sent)
+                self.assertIn(REC.pick.title,sent[0])
+                self.assertIn('Reply go',sent[0])
+                self.assertEqual(state.get_last_pick(PHONE).pick.id,REC.pick.id)
+                saved=next(s for s in service.sessions() if s['sessionId']==missed['sessionId'])
+                self.assertEqual(saved['missedReason'],'no-answer')
+                self.assertIs(saved['missTextSent'],True)
+
+                # A repeated webhook for the same call adds nothing.
+                await engine.event({'id':'e2','type':'call.ended','data':{'callId':'c-miss','status':'no-answer'}})
+                self.assertEqual(len(sent),1,sent)
+
+                # A placement failure may never have rung, so it must not claim a miss.
+                await engine.event({'id':'e3','type':'call.ended','data':{'callId':'c-fail','status':'failed'}})
+                self.assertEqual(len(sent),1,sent)
+
+                # An answered call goes to transcription and never texts.
+                await engine.event({'id':'e4','type':'call.ended','data':{'callId':'c-ok','status':'completed'}})
+                self.assertEqual(len(sent),1,sent)
+                self.assertEqual(next(i for i in engine.state['items'] if i['callId']=='c-ok')['status'],'awaiting_transcript')
+
+                # The engine's own guard blocks a repeated webhook, so exercise the
+                # service guard directly: it is what protects any other caller.
+                service.miss({'id':missed['sessionId']},'no-answer')
+                self.assertEqual(len(sent),1,sent)
+
+            # A dead SMS channel must not break the webhook worker.
+            retry=session_for('op-retry','c-miss2')
+            with patch('app.phone.dial.send_sms',side_effect=RuntimeError('dial down')):
+                await engine.event({'id':'e5','type':'call.ended','data':{'callId':'c-miss2','status':'busy'}})
+            self.assertIs(next(s for s in service.sessions() if s['sessionId']==retry['sessionId']).get('missTextSent'),None)
+        asyncio.run(exercise())
+
     def test_calendar_trigger_places_one_call_then_dedupes_after_restart(self):
         async def exercise():
             with patch.object(settings,'LIVE_CALLS_ENABLED',True), patch.object(settings,'CALL_OPT_IN',True):
