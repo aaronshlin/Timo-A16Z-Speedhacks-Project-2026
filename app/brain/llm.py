@@ -1,17 +1,20 @@
-"""One structured LLM call per job. Every function returns None on failure, a 3s timeout,
-or an invalid answer, so callers keep their deterministic fallback."""
+"""One structured LLM call per job. Every function returns None on failure, a timeout (3s, or
+60s for web research), or an invalid answer, so callers keep their deterministic fallback."""
 
 import json
 import logging
 
 import anthropic
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel, Field, create_model
 
 from app.config import settings
 from app.models import Candidate, Fact, FreeWindow, Situation, UserProfile
 
 log = logging.getLogger(__name__)
 _client: anthropic.Anthropic | None = None
+_research_client: anthropic.Anthropic | None = None
+RESEARCH_TIMEOUT = 60.0
+MAX_CONTINUATIONS = 2
 
 PICK_SYSTEM = """You are Timo. You text or call a student with ONE exact thing to do in a free block.
 You get the free window, the student's situation, what Timo remembers about them, and up to 5
@@ -24,11 +27,47 @@ Never invent items, links, or facts that are not in the input."""
 EXTRACT_SYSTEM = """You extract facts a user stated about themselves in a text message.
 Fill a field only when the message states it. Use null for anything not stated. Never guess."""
 
+RESEARCH_SYSTEM = """You research a new user of Timo, an assistant that plans their day around
+their commute, so it can personalize their day. You get identity hints. Use web search to find who
+this person most likely is, and use the hints (email domain, school, employer, links, signature)
+to tell them apart from people with the same name.
+
+Privacy rules (strict):
+- Only public, professional information: role, employer, school, program, public projects,
+  skills, interests, public profile links.
+- Never look for or report a home address, phone number, family, health, finances, or anything
+  sensitive.
+- If you are unsure, return several matches with lower match_confidence instead of guessing.
+
+Finish with ONLY a JSON object:
+{"matches": [{"summary": "<short description, e.g. CS student at UC Berkeley who builds AI agents>",
+              "match_confidence": <0-1>,
+              "facts": [{"key": "...", "value": "..."}],
+              "sources": ["<url>", ...]}]}
+Fact keys: role, employer, school, program, skills, projects, interests, links.
+One fact per value; skills, projects, interests and links can repeat."""
+
 
 class Choice(BaseModel):
     pick_id: str
     reason: str
     speech_text: str
+
+
+class Found(BaseModel):
+    key: str
+    value: str
+
+
+class Match(BaseModel):
+    summary: str
+    match_confidence: float
+    facts: list[Found] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+
+
+class Research(BaseModel):
+    matches: list[Match] = Field(default_factory=list)
 
 
 def _get_client() -> anthropic.Anthropic | None:
@@ -103,3 +142,44 @@ def extract_facts(text: str, keys: list[str]) -> dict[str, str] | None:
     if extracted is None:
         return None
     return {key: value.strip() for key, value in extracted.model_dump().items() if value}
+
+
+def research(hints: dict, max_searches: int = 5) -> Research | None:
+    """Who is this person? Claude with server-side web search. Slow: run it in the background."""
+    global _research_client
+    if not settings.ANTHROPIC_API_KEY:
+        return None
+    if _research_client is None:
+        _research_client = anthropic.Anthropic(
+            api_key=settings.ANTHROPIC_API_KEY, timeout=RESEARCH_TIMEOUT, max_retries=0
+        )
+    # Haiku takes the basic web search tool; Sonnet and Opus take the dynamic-filtering one.
+    tool = "web_search_20250305" if "haiku" in settings.LLM_MODEL else "web_search_20260209"
+    messages: list[dict] = [{"role": "user", "content": "Identity hints:\n" + json.dumps(hints)}]
+    try:
+        for _ in range(1 + MAX_CONTINUATIONS):
+            response = _research_client.messages.create(
+                model=settings.LLM_MODEL,
+                max_tokens=16000,
+                system=RESEARCH_SYSTEM,
+                output_config={"effort": "medium"},
+                tools=[{"type": tool, "name": "web_search", "max_uses": max_searches}],
+                messages=messages,
+            )
+            if response.stop_reason != "pause_turn":
+                break
+            # The server paused its search loop; sending the turn back resumes it.
+            messages.append({"role": "assistant", "content": response.content})
+    except anthropic.APIError as exc:
+        log.warning("research call failed: %s", type(exc).__name__)
+        return None
+    if response.stop_reason != "end_turn":
+        log.warning("research stopped early: %s", response.stop_reason)
+        return None
+    text = "".join(block.text for block in response.content if block.type == "text")
+    start, end = text.find("{"), text.rfind("}")
+    try:
+        return Research.model_validate(json.loads(text[start : end + 1]))
+    except ValueError as exc:
+        log.warning("research output invalid: %s", type(exc).__name__)
+        return None

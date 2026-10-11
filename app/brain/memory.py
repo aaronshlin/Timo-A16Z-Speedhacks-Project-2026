@@ -14,8 +14,11 @@ from app.clock import now
 from app.models import Channel, Fact, FactSource, Interaction, Memory, PendingAction
 
 log = logging.getLogger(__name__)
-_RANK: dict[str, int] = {"user_said": 3, "gmail": 2, "scrub": 1, "inferred": 0}
+RANK: dict[str, int] = {"user_said": 3, "gmail": 2, "scrub": 1, "inferred": 0}
 ONBOARDING_KEYS = ["name", "home", "weekday_destination", "commute_mode", "leave_time"]
+PROFILE_KEYS = [*ONBOARDING_KEYS, "role", "employer", "school", "interests", "links"]
+# These hold a comma-separated list that grows; every other key holds one value.
+LIST_KEYS = {"interests", "skills", "projects", "links"}
 
 
 def load(phone: str) -> Memory:
@@ -27,11 +30,24 @@ def load(phone: str) -> Memory:
     )
 
 
+def list_items(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def remember(
     phone: str, key: str, value: str, source: FactSource, confidence: float = 1.0
 ) -> Fact:
     existing = next((fact for fact in state.get_facts(phone) if fact.key == key), None)
-    if existing is not None and _RANK[existing.source] > _RANK[source]:
+    if existing is not None and key in LIST_KEYS:
+        items = list_items(existing.value)
+        known = {item.lower() for item in items}
+        added = [item for item in dict.fromkeys(list_items(value)) if item.lower() not in known]
+        if not added:
+            return existing
+        value = ", ".join(items + added)
+        if RANK[existing.source] > RANK[source]:
+            source, confidence = existing.source, existing.confidence
+    elif existing is not None and RANK[existing.source] > RANK[source]:
         log.info("keep fact phone=%s key=%s source=%s over %s", phone, key, existing.source, source)
         return existing
     fact = Fact(key=key, value=value, source=source, confidence=confidence, updated_at=now())
@@ -97,10 +113,14 @@ def resolve_pending(action_id: str, status: str = "done") -> None:
 
 
 def stage_facts(
-    phone: str, facts: dict[str, str], source: FactSource, confidence: float = 0.7
+    phone: str,
+    facts: dict[str, str],
+    source: FactSource,
+    confidence: float = 0.7,
+    summary: str | None = None,
 ) -> PendingAction:
     """Hold facts (e.g. from the profile scrub) until the user replies Y."""
-    summary = ", ".join(f"{key}: {value}" for key, value in facts.items())
+    summary = summary or ", ".join(f"{key}: {value}" for key, value in facts.items())
     return add_pending(
         phone,
         "confirm_facts",
@@ -116,3 +136,13 @@ def confirm_facts(phone: str, action: PendingAction) -> list[Fact]:
     ]
     resolve_pending(action.id)
     return saved
+
+
+def reject_facts(phone: str, action: PendingAction) -> None:
+    """The user said N. The staged facts stay on file as ruled out so nobody suggests them again."""
+    resolve_pending(action.id, "rejected")
+    log.info("ruled out phone=%s action=%s", phone, action.id)
+
+
+def ruled_out(phone: str) -> list[PendingAction]:
+    return [action for action in state.get_pending(phone, "rejected") if action.kind == "confirm_facts"]

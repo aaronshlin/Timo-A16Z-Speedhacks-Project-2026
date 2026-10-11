@@ -160,12 +160,12 @@ def add_pending(phone: str, action: PendingAction) -> None:
         )
 
 
-def get_pending(phone: str) -> list[PendingAction]:
+def get_pending(phone: str, status: str = "pending") -> list[PendingAction]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT payload FROM pending_actions WHERE phone = ? AND status = 'pending' "
+            "SELECT payload FROM pending_actions WHERE phone = ? AND status = ? "
             "ORDER BY rowid",
-            (phone,),
+            (phone, status),
         ).fetchall()
     return [PendingAction.model_validate_json(row["payload"]) for row in rows]
 
@@ -175,3 +175,13 @@ def set_pending_status(action_id: str, status: str) -> None:
         conn.execute(
             "UPDATE pending_actions SET status = ? WHERE id = ?", (status, action_id)
         )
+
+
+def claim_pending(action_id: str) -> bool:
+    """Move one action from pending to running. False if another run already took it."""
+    with _conn() as conn:
+        cursor = conn.execute(
+            "UPDATE pending_actions SET status = 'running' WHERE id = ? AND status = 'pending'",
+            (action_id,),
+        )
+    return cursor.rowcount == 1
