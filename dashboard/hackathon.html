@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timo Showcase</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --surface: #f3f5fa; --raised: #ffffff;
+  --text: #1d1d1f; --text-2: #7b8499; --text-3: #8994aa;
+  --line: rgba(0,0,0,.08); --line-2: rgba(0,0,0,.12);
+  --accent: #a6b4fa; --accent-ink: #4b5bd6; --link: #2e4fff; --bubble: #efefec;
+  --ease: cubic-bezier(.24,.42,.42,.92); --dur: 240ms;
+  --shadow: 0 1px 2px rgba(20,28,60,.06), 0 6px 16px rgba(20,28,60,.08), 0 18px 40px rgba(20,28,60,.06);
+  --display: "Newsreader", Georgia, serif;
+  --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141414; --surface: #1e1f24; --raised: #2a2b34;
+    --text: #f5f5f7; --text-2: rgba(245,245,247,.62); --text-3: rgba(245,245,247,.48);
+    --line: rgba(255,255,255,.08); --line-2: rgba(255,255,255,.12);
+    --accent-ink: #a6b4fa; --link: #a6b4fa; --bubble: #2a2b34;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141414; --surface: #1e1f24; --raised: #2a2b34;
+  --text: #f5f5f7; --text-2: rgba(245,245,247,.62); --text-3: rgba(245,245,247,.48);
+  --line: rgba(255,255,255,.08); --line-2: rgba(255,255,255,.12);
+  --accent-ink: #a6b4fa; --link: #a6b4fa; --bubble: #2a2b34;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 400 16px/1.5 var(--ui); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: var(--link); text-decoration: none; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 44px; }
+.disp { font-family: var(--display); font-weight: 400; letter-spacing: -0.01em; }
+
+.hero { position: relative; color: #fff; overflow: hidden;
+  background: linear-gradient(170deg, #4a5f8f 0%, #6f82c4 36%, #a6b4fa 70%, #e8a48a 100%); }
+.hero::after { content: ""; position: absolute; width: 720px; height: 720px; right: -220px; top: -260px;
+  background: radial-gradient(closest-side, rgba(255,255,255,.35), rgba(255,255,255,0)); filter: blur(30px); pointer-events: none; }
+.hero .wrap { position: relative; z-index: 1; padding-top: 24px; padding-bottom: 72px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand { font-family: var(--display); font-size: 26px; }
+.brand i { font-size: 17px; opacity: .75; margin-left: 4px; }
+.nav { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,.16); backdrop-filter: blur(8px); }
+.nav a { color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; transition: background var(--dur) var(--ease); }
+.nav a:hover { background: rgba(255,255,255,.14); }
+.nav a[aria-current="page"] { background: #fff; color: #1d1d1f; }
+.kicker { margin: 72px 0 12px; font-size: 14px; font-weight: 500; opacity: .9; }
+.hero h1 { font-size: clamp(44px, 7vw, 84px); line-height: 1.02; margin: 0; max-width: 860px; text-shadow: 0 2px 24px rgba(30,40,80,.18); }
+.hero h1 em { font-style: italic; }
+.lede { margin: 24px 0 0; max-width: 640px; font-size: 19px; line-height: 1.45; opacity: .95; }
+.ctas { margin-top: 32px; display: flex; gap: 12px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 999px; font-size: 15px; font-weight: 500;
+  transition: transform 120ms var(--ease), background var(--dur) var(--ease); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: #fff; color: #1d1d1f; box-shadow: var(--shadow); }
+.btn.ghost { color: #fff; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.32); }
+.btn.ghost:hover { background: rgba(255,255,255,.22); }
+
+.proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: -40px; position: relative; z-index: 2; }
+.stat { background: var(--raised); border: 1px solid var(--line); border-radius: 20px; padding: 24px; box-shadow: var(--shadow); }
+.stat .v { font-family: var(--display); font-size: 48px; line-height: 1; letter-spacing: -0.01em; }
+.stat .v small { font-family: var(--ui); font-size: 16px; color: var(--text-2); margin-left: 4px; letter-spacing: 0; }
+.stat .l { margin-top: 8px; color: var(--text-2); font-size: 14px; line-height: 1.4; }
+
+section { margin-top: 88px; }
+.sh { margin-bottom: 24px; max-width: 720px; }
+.sh h2 { font-family: var(--display); font-weight: 400; letter-spacing: -0.01em; font-size: clamp(30px, 4vw, 42px); line-height: 1.1; margin: 0; }
+.sh p { color: var(--text-2); margin: 12px 0 0; font-size: 17px; }
+
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; counter-reset: s; }
+.step { background: var(--surface); border-radius: 20px; padding: 24px; }
+.step .n { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; font-size: 14px; font-weight: 500;
+  background: color-mix(in oklab, var(--accent) 40%, var(--bg)); color: var(--text); }
+.step h3 { font-family: var(--display); font-weight: 400; font-size: 26px; margin: 16px 0 8px; }
+.step p { margin: 0; color: var(--text-2); font-size: 15px; }
+
+.day { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.moments { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.moment { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; background: var(--surface); border-radius: 20px; padding: 16px 20px; }
+.moment .t { font-family: var(--display); font-size: 20px; line-height: 1.2; }
+.moment .what { font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
+.bubble { background: var(--bubble); border-radius: 18px 18px 18px 6px; padding: 10px 14px; font-size: 15px; line-height: 1.4; width: fit-content; max-width: 100%; box-shadow: 0 1px 2px rgba(20,28,60,.06); }
+.bubble.me { background: var(--accent-ink); color: #fff; border-radius: 18px 18px 6px 18px; margin: 8px 0 8px auto; }
+.bubble .link { display: block; color: var(--link); font-size: 13px; margin-top: 4px; overflow-wrap: anywhere; }
+
+.call { position: relative; background: #1d1f2a; color: #f5f5f7; border-radius: 28px; padding: 28px; overflow: hidden; }
+.call::before { content: ""; position: absolute; inset: auto -80px -140px auto; width: 380px; height: 380px;
+  background: radial-gradient(closest-side, rgba(166,180,250,.55), rgba(166,180,250,0)); filter: blur(30px); }
+.call > * { position: relative; }
+.call .head { display: flex; align-items: center; gap: 12px; }
+.call .dot { width: 10px; height: 10px; border-radius: 999px; background: #7ee2a8; box-shadow: 0 0 0 6px rgba(126,226,168,.15); }
+.call .head b { font-weight: 500; }
+.call .head span { color: rgba(245,245,247,.6); font-size: 14px; }
+.wave { display: flex; align-items: center; gap: 3px; height: 40px; margin: 20px 0; }
+.wave i { flex: 1; max-width: 6px; border-radius: 3px; background: #a6b4fa; height: 20%; animation: wv 1.4s var(--ease) infinite; }
+@keyframes wv { 0%, 100% { height: 18%; } 50% { height: 90%; } }
+.lines { display: grid; gap: 12px; }
+.line { font-family: var(--display); font-size: 21px; line-height: 1.35; }
+.line.you { font-family: var(--ui); font-size: 15px; color: rgba(245,245,247,.7); }
+.line.check { font-family: var(--ui); font-size: 15px; padding: 12px 16px; border-radius: 16px; background: rgba(166,180,250,.14); border: 1px solid rgba(166,180,250,.3); }
+
+.why { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.card { background: var(--surface); border-radius: 20px; padding: 24px; }
+.card h3 { font-family: var(--display); font-weight: 400; font-size: 25px; line-height: 1.15; margin: 0 0 8px; }
+.card p { margin: 0; color: var(--text-2); font-size: 15px; }
+
+.dial { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px; align-items: center;
+  background: var(--surface); border-radius: 28px; padding: 44px; }
+.dial h2 { font-family: var(--display); font-weight: 400; font-size: clamp(32px, 4vw, 44px); line-height: 1.05; margin: 0; }
+.dial p { color: var(--text-2); margin: 12px 0 0; }
+.prims { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.prims li { background: var(--raised); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; font-size: 14px; color: var(--text-2); }
+.prims b { display: block; color: var(--text); font-weight: 500; font-size: 15px; margin-bottom: 2px; }
+
+.stack { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: 14px; padding: 8px 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+
+footer { margin: 88px 0 44px; padding-top: 24px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--text-3); font-size: 14px; }
+footer .sign { font-family: var(--display); font-size: 22px; color: var(--text); }
+
+.rise { opacity: 0; transform: translateY(12px); transition: opacity 600ms var(--ease), transform 600ms var(--ease); }
+.rise.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .rise { opacity: 1; transform: none; transition: none; } .wave i { animation: none; height: 50%; } }
+
+@media (max-width: 960px) {
+  .proof, .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .why { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .day, .dial { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .wrap { padding: 0 16px; }
+  .proof, .steps, .why, .prims { grid-template-columns: minmax(0, 1fr); }
+  .dial, .call { padding: 24px; }
+  .kicker { margin-top: 44px; }
+  .lede { font-size: 17px; }
+  .moment { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+@media print {
+  .hero { background: none; color: var(--text); }
+  .btn, .nav, .wave { display: none; }
+  .rise { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">timo<i>agent</i></div>
+      <nav class="nav" aria-label="Pages">
+        <a href="/">Agent replay</a>
+        <a href="/hackathon" aria-current="page">Showcase</a>
+      </nav>
+    </div>
+    <p class="kicker">SpeedHacks 2026 · Give people their time back</p>
+    <h1 class="disp">Your day, handled by <em>a phone call.</em></h1>
+    <p class="lede">Timo is an AI agent that lives in a phone number. It reads your calendar, plans around your commute, and calls or texts you first with one exact thing to do. No app to open and no list to check.</p>
+    <div class="ctas">
+      <a class="btn primary" href="/">Watch it plan a day →</a>
+      <a class="btn ghost" href="https://github.com/aaronshlin/Timo-A16Z-Speedhacks-Project-2026" target="_blank" rel="noopener">Read the code ↗</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="proof">
+    <div class="stat rise"><div class="v disp">116<small>min</small></div><div class="l">of screen time handed back across 12 everyday tasks (demo-set estimate)</div></div>
+    <div class="stat rise"><div class="v disp">0<small>apps</small></div><div class="l">to install. Anyone with a phone number can use Timo today.</div></div>
+    <div class="stat rise"><div class="v disp">1<small>word</small></div><div class="l">steers it. Reply go, next, done, bus or Y.</div></div>
+    <div class="stat rise"><div class="v disp">74<small>tests</small></div><div class="l">keep the whole loop solid, and every one runs offline.</div></div>
+  </div>
+
+  <section>
+    <div class="sh rise"><h2>Four moves. Zero decisions for you.</h2><p>Timo never hands you a to-do list. It brings you one pick, already lined up.</p></div>
+    <div class="steps">
+      <div class="step rise"><div class="n">1</div><h3>Watches</h3><p>It reads your calendar for free gaps and works out when you need to leave, from how you get around.</p></div>
+      <div class="step rise"><div class="n">2</div><h3>Decides</h3><p>It picks one thing that fits the gap: the assignment due soonest, something phone-friendly for the bus, or a reply to send.</p></div>
+      <div class="step rise"><div class="n">3</div><h3>Acts</h3><p>It lines up the safe, reversible steps itself and has the draft ready before it reaches you.</p></div>
+      <div class="step rise"><div class="n">4</div><h3>Reaches out</h3><p>It calls when you're about to leave and texts the rest of the time. Say yes on the call and it acts while you're still on the line.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh rise"><h2>A day with Timo</h2><p>Real decisions from Timo's engine on a Berkeley student's Sunday, Oct 11.</p></div>
+    <div class="day">
+      <ul class="moments">
+        <li class="moment rise"><div class="t">7:20am</div><div><div class="what">Calls before the commute</div>
+          <div class="bubble">Leave at 7:40am for CS 61B Lecture at 8:30am. It's about 40 minutes to the Berkeley campus by BART. That's 35 minutes earlier than usual.</div></div></li>
+        <li class="moment rise"><div class="t">10:15am</div><div><div class="what">Turns a 27-minute gap into progress</div>
+          <div class="bubble">CS 61B binary trees worksheet, problem 4 fits this 27-minute gap before Math 54 Discussion.<span class="link">inst.eecs.berkeley.edu/~cs61b/assignments/binary-trees</span></div></div></li>
+        <li class="moment rise"><div class="t">10:17am</div><div><div class="what">One word changes the plan</div>
+          <div class="bubble me">bus</div>
+          <div class="bubble">Phone-friendly for the bus: Math 54 quiz notes on linear maps fits this 25-minute gap before Math 54 Discussion.</div></div></li>
+        <li class="moment rise"><div class="t">12:00pm</div><div><div class="what">Finds the long gap for the big task</div>
+          <div class="bubble">Physics 7A lab report, friction section fits this 57-minute gap before Physics 7A Lab.<span class="link">bcourses.berkeley.edu/courses/phys7a/assignments/lab-report</span></div></div></li>
+      </ul>
+
+      <div class="call rise" aria-label="Example Timo call">
+        <div class="head"><span class="dot" aria-hidden="true"></span><div><b>Timo is calling</b><br><span>Over Dial voice · tools run mid-call</span></div></div>
+        <div class="wave" aria-hidden="true"></div>
+        <div class="lines">
+          <div class="line">“You're done here early. Want me to get you an Uber back to the office? It's $18, about four minutes away.”</div>
+          <div class="line you">You: Yeah, do it.</div>
+          <div class="line check">Timo confirms the exact action first: “Request the $18 UberX from this venue to the office?”</div>
+          <div class="line">“You still have that Zacua follow-up. I've drafted a short Timo update. Want to hear it before I send it?”</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh rise"><h2>Why Timo is different</h2></div>
+    <div class="why">
+      <div class="card rise"><h3>It calls you first.</h3><p>Timo decides when to reach out: in a free gap, or 20 minutes before you need to leave. It also knows when to stay quiet.</p></div>
+      <div class="card rise"><h3>SMS is the control plane.</h3><p>One-word replies steer the agent, and a single Y approves an action. There are no menus or screens to learn.</p></div>
+      <div class="card rise"><h3>Two agents, real numbers.</h3><p>Timo calls an agent on a second Dial number that plays the user, and a spoken yes runs tools in the middle of the call.</p></div>
+      <div class="card rise"><h3>Safe by design.</h3><p>Rules live in code: text vs. call, quiet hours, at most 2 calls a day. Anything that touches other people waits for your yes.</p></div>
+      <div class="card rise"><h3>Built to survive the demo.</h3><p>If the LLM goes down, Timo still sends a clear message. An unanswered call becomes a text, and webhooks are signed and deduplicated.</p></div>
+      <div class="card rise"><h3>Hands-free when it counts.</h3><p>Biking, driving or on the bus, voice gets you the plan without touching a screen.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="dial rise">
+      <div>
+        <h2>Dial is the spine.</h2>
+        <p>Every part of Timo runs through Dial's phone layer. It isn't one API call bolted on; it's the whole interface.</p>
+      </div>
+      <ul class="prims">
+        <li><b>AI voice calls</b>Outbound calls, triggered by your calendar</li>
+        <li><b>Context MCP</b>Tools run mid-call, each with its own confirmation</li>
+        <li><b>SMS loop</b>Two-way texting between Dial numbers</li>
+        <li><b>Signed webhooks</b>Call ended, call transcribed and message received</li>
+        <li><b>Transcript recovery</b>Approvals reconciled after the call ends</li>
+        <li><b>Dial CLI</b>Setup, auth and number wiring</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="sh rise"><h2>Built with</h2></div>
+    <div class="stack rise">
+      <span class="chip">Dial voice + SMS</span><span class="chip">Dial Context MCP</span><span class="chip">Claude</span>
+      <span class="chip">Google Calendar</span><span class="chip">Python + FastAPI</span><span class="chip">FastMCP</span><span class="chip">SQLite</span>
+    </div>
+  </section>
+
+  <footer>
+    <div class="sign">timo</div>
+    <div>Built in one day at SpeedHacks · Oct 11, 2026 · Aaron, Adith, Eric and Johnson</div>
+  </footer>
+</main>
+
+<script>
+const wave = document.querySelector(".wave");
+for (let i = 0; i < 48; i++) {
+  const bar = document.createElement("i");
+  bar.style.animationDelay = (i * 37 % 1400) + "ms";
+  wave.appendChild(bar);
+}
+const reveal = new IntersectionObserver((entries) => {
+  for (const entry of entries) if (entry.isIntersecting) { entry.target.classList.add("in"); reveal.unobserve(entry.target); }
+}, { threshold: 0.12 });
+document.querySelectorAll(".rise").forEach((el, i) => { el.style.transitionDelay = (i % 4) * 60 + "ms"; reveal.observe(el); });
+</script>
+</body>
+</html>

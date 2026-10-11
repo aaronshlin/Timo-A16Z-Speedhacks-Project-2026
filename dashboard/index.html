@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timo Agent Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23a6b4fa'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
+<style>
+/* ============ Theme tokens: swap the whole look from these two blocks ============ */
+@property --sky-a { syntax: '<color>'; inherits: true; initial-value: #4a5f8f; }
+@property --sky-b { syntax: '<color>'; inherits: true; initial-value: #a6b4fa; }
+@property --sky-c { syntax: '<color>'; inherits: true; initial-value: #e8a48a; }
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --surface: #f3f5fa; --raised: #ffffff;
+  --text: #1d1d1f; --text-2: #7b8499; --text-3: #8994aa; --faint: #b1bcd2;
+  --line: rgba(0,0,0,.08); --line-strong: rgba(0,0,0,.12); --scrim: rgba(30,40,80,.04);
+  --accent: #a6b4fa; --accent-ink: #1d1d1f; --accent-soft: rgba(166,180,250,.20); --accent-line: rgba(166,180,250,.75);
+  --link: #2e4fff; --danger: #df4f41; --danger-soft: rgba(223,79,65,.10);
+  --bubble: #efefec; --bubble-ink: #1d1d1f; --bubble-me: #a6b4fa; --bubble-me-ink: #1d1d1f;
+  --btn2-bg: #f3f5fa;
+  --hero-ink: #ffffff; --hero-ink-2: rgba(255,255,255,.8); --hero-pill: rgba(255,255,255,.16); --hero-line: rgba(255,255,255,.28);
+  --font-display: "Newsreader", "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --r-pill: 999px; --r-md: 16px; --r-card: 20px; --r-xl: 28px;
+  --shadow-float: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(30,40,80,.08);
+  --s1: 4px; --s2: 12px; --s3: 16px; --s4: 24px; --s5: 44px;
+  --ease: cubic-bezier(.24,.42,.42,.92); --dur: 240ms; --dur-press: 120ms; --dur-sky: 1.2s;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #141414; --surface: #1e1f24; --raised: #2a2b34;
+    --text: #f5f5f7; --text-2: rgba(245,245,247,.6); --text-3: rgba(245,245,247,.5); --faint: rgba(245,245,247,.3);
+    --line: rgba(255,255,255,.08); --line-strong: rgba(255,255,255,.12); --scrim: rgba(255,255,255,.03);
+    --accent-soft: rgba(166,180,250,.13); --accent-line: rgba(166,180,250,.5);
+    --link: #93a5ff; --danger-soft: rgba(223,79,65,.16);
+    --bubble: #2a2b34; --bubble-ink: #f5f5f7; --btn2-bg: #1e1f24;
+    --shadow-float: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+}
+/* ============ Base ============ */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 15px/1.35 var(--font-ui); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+.wrap { max-width: 880px; margin: 0 auto; padding: var(--s2) var(--s4) var(--s5); overflow-x: clip; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 14px; border-radius: var(--r-pill);
+  border: 1px solid var(--line); background: var(--btn2-bg); color: var(--text); font: 500 13px var(--font-ui); cursor: pointer; white-space: nowrap;
+  transition: transform var(--dur-press) var(--ease), background var(--dur) var(--ease); }
+.btn:active { transform: scale(.97); }
+.btn:focus-visible, .row-head:focus-visible, .link:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.btn.glass { background: var(--hero-pill); border-color: var(--hero-line); color: var(--hero-ink); }
+.btn.icon { width: 30px; padding: 0; background: transparent; border-color: transparent; color: var(--text-3); }
+.link { padding: 0; border: 0; background: none; color: var(--link); font-size: 13px; cursor: pointer; }
+.ico { flex: none; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes bub { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+/* ============ Hero sky ============ */
+.hero { position: relative; isolation: isolate; overflow: hidden; border-radius: var(--r-xl); padding: var(--s3) var(--s4) var(--s4); color: var(--hero-ink);
+  background: linear-gradient(155deg, var(--sky-a) 0%, var(--sky-b) 58%, var(--sky-c) 100%);
+  transition: --sky-a var(--dur-sky) var(--ease), --sky-b var(--dur-sky) var(--ease), --sky-c var(--dur-sky) var(--ease); }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(90% 70% at 88% -10%, rgba(255,255,255,.22), transparent 60%), linear-gradient(180deg, transparent 40%, rgba(16,22,56,.12)); }
+.topbar { display: flex; align-items: center; gap: var(--s2); }
+.brand { display: flex; align-items: baseline; gap: 6px; margin-right: auto; }
+.wordmark { font: 400 26px/1 var(--font-display); letter-spacing: -0.01em; }
+.brand em { font: italic 400 16px/1 var(--font-display); color: var(--hero-ink-2); }
+.hpill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--r-pill);
+  background: var(--hero-pill); border: 1px solid var(--hero-line); color: var(--hero-ink); font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.hpill .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.55); }
+.hpill.live .dot { background: #5ef0a0; animation: pulse 2s var(--ease) infinite; }
+.hpill.connecting .dot { background: #ffd27a; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(94,240,160,.55); } 70%, 100% { box-shadow: 0 0 0 7px rgba(94,240,160,0); } }
+.nowline { font: 400 36px/1.15 var(--font-display); letter-spacing: -0.01em; margin: var(--s5) 0 var(--s3); overflow-wrap: anywhere; text-shadow: 0 1px 14px rgba(16,22,56,.18); }
+.nowline .next { color: var(--hero-ink-2); }
+/* ============ Context line ============ */
+.ctx { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s2); margin: var(--s3) 4px 0; font-size: 14px; color: var(--text-2); }
+.ctx b { color: var(--text); font-weight: 500; }
+.day { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: var(--s2) 0 0; padding: var(--s2); border-radius: var(--r-card); background: var(--surface);
+  animation: rise var(--dur) var(--ease) both; }
+.cls { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 12px; border-radius: var(--r-pill); background: var(--raised); border: 1px solid var(--line); font-size: 13px; }
+.cls span { font: 11px var(--font-mono); color: var(--text-2); }
+.gap { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-pill); font-size: 11.5px; font-weight: 500;
+  color: var(--link); background: var(--accent-soft); border: 1px dashed var(--accent-line); }
+/* ============ Sections and rows ============ */
+.sec { margin-top: var(--s5); }
+.sec h2 { font: 400 26px/1.1 var(--font-display); letter-spacing: -0.01em; margin: 0 4px var(--s2); }
+.rows { display: flex; flex-direction: column; }
+.row { border-top: 1px solid var(--line); border-radius: var(--r-card); transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.row:first-child { border-top-color: transparent; }
+.row.open, .row.open + .row { border-top-color: transparent; }
+.row.open { background: var(--raised); box-shadow: var(--shadow-float); }
+.row.arrive { animation: rise 520ms var(--ease) both; }
+.row-head { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 2px var(--s2); width: 100%; padding: var(--s2) var(--s3) var(--s2) 4px;
+  border: 0; border-radius: var(--r-card); background: none; text-align: left; cursor: pointer; transition: background var(--dur) var(--ease); }
+.row-head:hover { background: var(--scrim); }
+.row.open .row-head:hover { background: none; }
+.row-head .t { font: 12px/21px var(--font-mono); color: var(--text-2); text-align: right; }
+.sent { font-size: 15.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.tags { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tags:empty { display: none; }
+.chip { display: inline-flex; align-items: center; max-width: 100%; height: 22px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-strong);
+  font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip.sim { border-style: dashed; }
+.chip.skip { text-decoration: line-through; opacity: .6; }
+.chip.ask { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 500; }
+.chip.held { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+.row-body { display: flex; flex-direction: column; gap: var(--s2); padding: 0 var(--s3) var(--s3) calc(64px + var(--s2) + 4px); animation: rise var(--dur) var(--ease) both; }
+.why { margin: 0; font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
+.bubbles { display: flex; flex-direction: column; gap: 6px; max-width: 440px; }
+.bubble { max-width: 90%; padding: 9px 13px; border-radius: 20px 20px 20px 6px; background: var(--bubble); color: var(--bubble-ink); white-space: pre-wrap;
+  overflow-wrap: anywhere; font-size: 14.5px; box-shadow: var(--shadow-float); align-self: flex-start; animation: bub 380ms var(--ease) both; animation-delay: var(--d, 0ms); }
+.bubble.me { align-self: flex-end; border-radius: 20px 20px 6px 20px; background: var(--bubble-me); color: var(--bubble-me-ink); }
+.bubble small { display: block; font-size: 11px; opacity: .6; margin-bottom: 2px; }
+.later .sent, .later .t { color: var(--text-3); }
+.more { margin: var(--s2) 0 0 calc(64px + var(--s2) + 4px); }
+.empty-line { color: var(--text-3); font-size: 14px; padding: var(--s2) 4px; }
+.footnote { margin: var(--s2) 0 0 calc(64px + var(--s2) + 4px); font-size: 13px; color: var(--text-3); }
+.footer { display: flex; align-items: center; gap: 6px; margin-top: var(--s5); padding: var(--s2) 4px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
+.footer span { flex: 1; min-width: 0; }
+.notice { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); padding: 6px 6px 6px var(--s3); border-radius: var(--r-card);
+  background: var(--danger-soft); font-size: 13px; color: var(--text-2); }
+.notice span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.empty { margin-top: var(--s4); padding: var(--s5) var(--s4); text-align: center; border-radius: var(--r-card); background: var(--surface); }
+.empty h2 { font: 400 28px/1.15 var(--font-display); margin: 0; }
+.empty p { color: var(--text-2); }
+.empty pre { display: inline-block; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 var(--s3); padding: var(--s2) var(--s3);
+  border-radius: var(--r-md); background: var(--raised); border: 1px solid var(--line); font: 13px var(--font-mono); text-align: left; }
+@media (max-width: 640px) {
+  .wrap { padding: var(--s2) var(--s3) var(--s5); }
+  .hero { padding: var(--s3); border-radius: 24px; }
+  .nowline { font-size: 28px; margin-top: var(--s4); }
+  .row-head { grid-template-columns: minmax(0, 1fr); padding: var(--s2) var(--s2) var(--s2) 4px; }
+  .row-head .t { text-align: left; line-height: 1.4; }
+  .tags { grid-column: 1; }
+  .row-body, .more, .footnote { padding-left: 4px; margin-left: 0; }
+  .row-body { padding: 0 var(--s2) var(--s2) 4px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero" id="hero">
+    <div class="topbar">
+      <div class="brand"><span class="wordmark">timo</span><em>agent</em></div>
+      <span class="hpill connecting" id="livePill" role="status" aria-live="polite"><span class="dot"></span><span>Connecting</span></span>
+    </div>
+    <p class="nowline" id="nowline" aria-live="polite"></p>
+    <button class="btn glass" id="replayBtn" type="button"></button>
+  </header>
+  <div id="notice"></div>
+  <main id="main"></main>
+  <footer class="footer" id="footer"></footer>
+</div>
+<script>
+(() => {
+'use strict';
+const TZ = 'America/Los_Angeles', LIVE_MS = 3000, REPLAY_MS = 20000, DAY0 = 420, DAY1 = 1140, DONE_MAX = 4;
+const $ = (id) => document.getElementById(id);
+const arr = (v) => Array.isArray(v) ? v : [];
+const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+const str = (v) => typeof v === 'string' ? v : (typeof v === 'number' || typeof v === 'boolean') ? String(v) : '';
+const num = (v) => typeof v === 'number' && isFinite(v) ? v : (typeof v === 'string' && v.trim() && isFinite(+v) ? +v : null);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const trunc = (s, n) => s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : s;
+const human = (s) => str(s).replace(/_/g, ' ');
+// lowercase the first letter unless the first word looks like a name or code ("CS 61B", "Math")
+const lc = (s) => { const w = (s.match(/^\S+/) || [''])[0]; return /[A-Z].*[A-Z0-9]|\d/.test(w) || /^(I|Math|Physics|Chem|EE|CS)$/.test(w) ? s : s.charAt(0).toLowerCase() + s.slice(1); };
+const period = (s) => /[.!?…]$/.test(s) ? s : s + '.';
+
+/* ---------- DOM helpers (data only ever goes through textContent / setAttribute) ---------- */
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'text') el.textContent = str(v);
+    else if (k === 'style') for (const [p, sv] of Object.entries(v)) el.style.setProperty(p, String(sv));
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const c of kids.flat(Infinity)) if (c !== null && c !== undefined && c !== false && c !== '') el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+  return el;
+}
+const ICONS = { refresh: 'M20 11.5A8 8 0 1 1 17.7 6M20 4v5h-5', x: 'M6 6l12 12M18 6L6 18', play: 'M8 5.5v13l11-6.5z' };
+function icon(name, size = 14) {
+  const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), p = document.createElementNS(NS, 'path'), fill = name === 'play';
+  for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: size, height: size, class: 'ico', 'aria-hidden': 'true', fill: fill ? 'currentColor' : 'none',
+    stroke: fill ? 'none' : 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) svg.setAttribute(k, String(v));
+  p.setAttribute('d', ICONS[name]); svg.appendChild(p); return svg;
+}
+
+/* ---------- Time (always America/Los_Angeles) ---------- */
+const fHM = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', hour12: true });
+const fYMD = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const fWk = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'long' });
+const f24 = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+function toDate(v) {
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  if (typeof v === 'number' && isFinite(v)) return new Date(v < 1e12 ? v * 1000 : v);
+  if (typeof v === 'string' && v) { const d = new Date(v); return isNaN(d) ? null : d; }
+  return null;
+}
+const fmtTime = (v) => { const d = toDate(v); return d ? fHM.format(d).replace(/\s?([AP])M$/i, (_, x) => x.toLowerCase() + 'm') : ''; };
+function minOfDay(v) {
+  const d = toDate(v); if (!d) return null;
+  const p = Object.fromEntries(f24.formatToParts(d).map((x) => [x.type, x.value]));
+  return (Number(p.hour) % 24) * 60 + Number(p.minute);
+}
+const fmtMin = (m) => { const hr = Math.floor(m / 60) % 24; return `${hr % 12 || 12}:${String(Math.floor(m % 60)).padStart(2, '0')}${hr < 12 ? 'am' : 'pm'}`; };
+
+/* ---------- State ---------- */
+const S = { snap: null, entries: [], open: new Set(), showAll: false, showDay: false, replay: null, doneKeys: null, errHidden: false, errKey: '', liveSig: null, liveBusy: false };
+
+/* ---------- Data loading ---------- */
+async function getJSON(url, ms = 5000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: ctl.signal, headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return JSON.parse(await r.text());
+  } finally { clearTimeout(t); }
+}
+async function loadSnapshot() {
+  let snap = null;
+  for (const url of ['/api/snapshot', './snapshot.json']) {
+    try { const j = await getJSON(url); if (j && typeof j === 'object' && !Array.isArray(j)) { snap = j; break; } } catch (_) { /* try the next source */ }
+  }
+  if (!snap) { if (!S.snap) render(); return; }
+  S.snap = snap;
+  S.entries = arr(snap.timeline).filter((e) => e && typeof e === 'object').map((e, i) => ({ e, i, t: toDate(e.at) }))
+    .sort((a, b) => ((a.t ? a.t.getTime() : Infinity) - (b.t ? b.t.getTime() : Infinity)) || a.i - b.i)
+    .map((x, i) => Object.assign({}, x.e, { _k: `${str(x.e.id)}#${i}` }));
+  const key = JSON.stringify(snap.errors || null);
+  if (key !== S.errKey) { S.errKey = key; S.errHidden = false; }
+  render();
+}
+
+/* ---------- "Now" is real LA time, or the replay sweep ---------- */
+const nowMin = () => S.replay ? S.replay.min : minOfDay(new Date());
+function isDone(e) {
+  if (S.replay) { const m = minOfDay(e.at); return m != null && m <= S.replay.min; }
+  const t = toDate(e.at); return !!t && t.getTime() <= Date.now();
+}
+const outcome = (e) => str(obj(e.decision).outcome);
+const userName = () => str(obj(obj(S.snap).user).name) || 'you';
+
+/* ---------- Plain-language sentences ---------- */
+function gapAt(at) {
+  const m = minOfDay(at); if (m == null) return null;
+  const g = arr(obj(obj(S.snap).day).gaps).map(obj).find((g) => { const a = minOfDay(g.start), b = minOfDay(g.end); return a != null && b != null && m >= a - 1 && m < b; });
+  return g ? { min: num(g.usable_minutes) ?? num(g.minutes), next: str(g.next_event_title) } : null;
+}
+const pickedOf = (e) => arr(e.candidates).map(obj).find((c) => c.status === 'picked');
+const cleanSum = (e) => str(obj(e.decision).summary).replace(/\s*\((dry run|simulated)[^)]*\)\s*$/i, '').replace(/^Voice session:\s*/i, '').replace(/[.\s]+$/, '');
+function describe(e, future) {
+  const d = obj(e.decision), kind = str(e.kind), name = userName(), pick = pickedOf(e), g = gapAt(e.at);
+  const title = pick ? str(pick.title) : '', mins = pick ? num(pick.minutes) : null, sum = cleanSum(e) || human(obj(e.trigger).label) || 'checked in';
+  const item = title ? `the ${title}${mins ? ` (${mins} min)` : ''}` : '';
+  const where = g && g.min ? ` in the ${g.min}-minute gap${g.next ? ' before ' + g.next : ''}` : '';
+  if (outcome(e) === 'hold') return future ? `hold off: ${lc(sum)}` : `Held off: ${lc(sum)}`;
+  if (kind === 'reply') {
+    const said = arr(e.messages).map(obj).find((m) => m.direction === 'in' && str(m.text));
+    return future ? `reply to ${name}` : (said ? `${name} replied “${trunc(str(said.text), 30)}”: ${lc(sum)}` : `Replied to ${name}: ${lc(sum)}`);
+  }
+  if (d.channel === 'sms') {
+    if (item && kind === 'free_slot') return future ? `text ${name} to start ${item}` : `Texted ${name}: do ${item}${where}`;
+    return future ? `text ${name}: ${lc(sum)}` : `Texted ${name}: ${lc(sum)}`;
+  }
+  if (d.channel === 'call') {
+    if (title && kind === 'voice_call') return future ? `call ${name} about ${lc(title)}` : `Called ${name} about ${lc(title)}`;
+    return future ? `call ${name}: ${lc(sum)}` : `Called ${name}: ${lc(sum)}`;
+  }
+  return future ? lc(sum) : cap(sum);
+}
+function whyLine(e) {
+  const d = obj(e.decision), pick = pickedOf(e), g = gapAt(e.at), kind = str(e.kind);
+  if (outcome(e) === 'hold') return 'Not worth an interruption right now.';
+  if (pick && kind === 'voice_call') return arr(e.pending).length || arr(e.actions).some((a) => obj(a).status === 'pending_confirmation')
+    ? 'It was next in Timo’s queue, and nothing happens until you say Y.' : 'It was next in Timo’s queue.';
+  if (pick) {
+    const due = fmtTime(pick.due), mins = num(pick.minutes), bits = [];
+    if (due) {
+      const dd = fYMD.format(toDate(pick.due)), ad = toDate(e.at) ? fYMD.format(toDate(e.at)) : dd;
+      const tmr = toDate(e.at) && fYMD.format(new Date(toDate(e.at).getTime() + 864e5)) === dd;
+      bits.push(dd === ad ? `it’s due at ${due}` : tmr ? `it’s due tomorrow at ${due}` : `it’s due ${fWk.format(toDate(pick.due))} at ${due}`);
+    }
+    if (mins && g && g.min) bits.push(`${mins} minutes fits in the ${g.min} you have`); else if (mins) bits.push(`it only takes ${mins} minutes`);
+    if (kind === 'reply') bits.unshift('you asked for something else');
+    return bits.length ? period(cap(bits.join(', and '))) : 'It was the best fit for the time you had.';
+  }
+  if (d.channel === 'call') return 'You’re about to leave, so a quick call beats a text.';
+  if (kind === 'reply') return 'You replied, so Timo answered by text.';
+  return '';
+}
+const CHIP = { calendar_block: 'Blocked', todoist_in_progress: 'Marked in progress', todoist_done: 'Marked done', todoist_rescheduled: 'Rescheduled', draft: 'Drafted' };
+function chipText(a) {
+  const base = CHIP[str(a.kind)]; if (!base) return '';
+  if (a.kind === 'calendar_block') { const r = str(a.label).match(/\d{1,2}(:\d{2})?\s*[ap]?m?\s*[–-]\s*\d{1,2}(:\d{2})?\s*[ap]m/i); return r ? `Blocked ${r[0].replace(/\s+/g, '')}` : 'Blocked calendar'; }
+  return base;
+}
+const awaitingY = (e) => arr(e.pending).length > 0 || arr(e.actions).some((a) => obj(a).status === 'pending_confirmation');
+
+/* ---------- Sky gradient follows "now" ---------- */
+const SKY = [[0, ['#1c2340', '#3b4a78', '#6d5a7a']], [360, ['#2c3561', '#77709f', '#c99088']], [450, ['#5a6aa0', '#c3a9c8', '#e8a48a']],
+  [560, ['#4a67c9', '#8c9ff2', '#d3bfda']], [720, ['#3e5bd6', '#7d92f5', '#a6b4fa']], [900, ['#4560c4', '#8f9ef0', '#c7b0d4']],
+  [1020, ['#4a5f8f', '#a6b4fa', '#e8a48a']], [1170, ['#262f55', '#4a5f8f', '#a3788a']], [1440, ['#1c2340', '#3b4a78', '#6d5a7a']]];
+const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+function setSky(m) {
+  if (m == null) return;
+  let i = 0; while (i < SKY.length - 2 && SKY[i + 1][0] <= m) i++;
+  const [m0, c0] = SKY[i], [m1, c1] = SKY[i + 1], t = clamp((m - m0) / (m1 - m0 || 1), 0, 1);
+  ['a', 'b', 'c'].forEach((k, j) => { const a = rgb(c0[j]), b = rgb(c1[j]);
+    $('hero').style.setProperty('--sky-' + k, `rgb(${a.map((x, n) => Math.round(x + (b[n] - x) * t)).join(',')})`); });
+}
+
+/* ---------- Render ---------- */
+function render() {
+  const nm = nowMin();
+  setSky(nm);
+  const rb = $('replayBtn');
+  rb.replaceChildren(icon(S.replay ? 'x' : 'play', 12), S.replay ? (S.replay.ended ? 'Back to now' : 'Stop replay') : 'Replay day');
+  renderFooter();
+  if (!S.snap) {
+    $('nowline').textContent = `Now ${fmtMin(nm)}.`;
+    $('main').replaceChildren(h('section', { class: 'empty' }, h('h2', { text: 'No snapshot to show yet' }),
+      h('p', { text: 'Start the dashboard server from the repo root:' }), h('pre', { text: 'uv run uvicorn dashboard.server:app --port 8100' }), h('br'),
+      h('button', { class: 'btn', type: 'button', onclick: loadSnapshot }, icon('refresh'), 'Try again')));
+    return;
+  }
+  const shown = S.entries.filter((e) => outcome(e) !== 'nothing');
+  const done = shown.filter(isDone).reverse(), later = shown.filter((e) => !isDone(e));
+  const quiet = S.entries.filter((e) => outcome(e) === 'nothing' && isDone(e)).length;
+  const prev = S.doneKeys; S.doneKeys = new Set(done.map((e) => e._k));
+  const next = later[0];
+  $('nowline').replaceChildren(h('span', { text: `Now ${nm == null ? '' : fmtMin(nm)}. ` }),
+    h('span', { class: 'next', text: next ? `Next: ${fmtTime(next.at)}, ${period(describe(next, true))}` : 'Nothing else planned today.' }));
+  renderNotice();
+  const pend = arr(obj(obj(S.snap).user).pending).map(obj).filter((p) => str(p.summary) && !S.entries.some((e) => arr(e.pending).some((q) => str(obj(q).id) && str(obj(q).id) === str(p.id))));
+  const visible = S.showAll ? done : done.slice(0, DONE_MAX);
+  $('main').replaceChildren(contextLine(),
+    h('section', { class: 'sec' }, h('h2', { text: 'Done' }),
+      done.length || pend.length ? h('div', { class: 'rows' }, pend.map(pendingRow), visible.map((e) => row(e, false, prev && !prev.has(e._k))))
+        : h('div', { class: 'empty-line', text: 'Nothing yet today.' }),
+      done.length > DONE_MAX ? h('div', { class: 'more' }, h('button', { class: 'link', type: 'button', onclick: () => { S.showAll = !S.showAll; render(); } },
+        S.showAll ? 'Show fewer' : `Show all ${done.length}`)) : null,
+      quiet ? h('p', { class: 'footnote', text: `Checked ${quiet} other gap${quiet === 1 ? '' : 's'}, nothing worth interrupting for.` }) : null),
+    h('section', { class: 'sec' }, h('h2', { text: 'Coming up' }),
+      later.length ? h('div', { class: 'rows' }, later.map((e) => row(e, true, false))) : h('div', { class: 'empty-line', text: 'Nothing else planned today.' })));
+}
+function contextLine() {
+  const snap = obj(S.snap), user = obj(snap.user), day = obj(snap.day);
+  const facts = arr(user.facts).map(obj), commute = facts.find((f) => /commute/.test(str(f.key)) && str(f.value));
+  const events = arr(day.events).map(obj), gaps = arr(day.gaps).map(obj);
+  const bits = [str(user.name) && h('b', { text: str(user.name) }), commute && `commutes by ${str(commute.value)}`,
+    user.channel === 'sms' ? 'prefers text' : user.channel === 'call' ? 'prefers calls' : '',
+    `${events.length} class${events.length === 1 ? '' : 'es'}`, gaps.length ? `${gaps.length} free gap${gaps.length === 1 ? '' : 's'}` : ''].filter(Boolean);
+  const line = h('div', { class: 'ctx' }, h('span', {}, bits.flatMap((b, i) => i ? [' · ', b] : [b])),
+    events.length ? h('button', { class: 'link', type: 'button', 'aria-expanded': S.showDay ? 'true' : 'false', onclick: () => { S.showDay = !S.showDay; render(); } },
+      S.showDay ? 'Hide today' : 'Show today') : null);
+  if (!S.showDay) return line;
+  const items = [];
+  events.forEach((e) => { const m = minOfDay(e.start); if (m != null) items.push({ m, el: h('span', { class: 'cls' }, h('span', { text: fmtTime(e.start) }), str(e.title) || 'Class') }); });
+  gaps.forEach((g) => { const m = minOfDay(g.start), um = num(g.usable_minutes) ?? num(g.minutes); if (m != null && um != null) items.push({ m: m + 0.5, el: h('span', { class: 'gap', text: `${um} min free` }) }); });
+  items.sort((a, b) => a.m - b.m);
+  return h('div', {}, line, h('div', { class: 'day' }, items.map((x) => x.el)));
+}
+function row(e, later, arrive) {
+  const open = S.open.has(e._k), acts = arr(e.actions).map(obj);
+  const chips = acts.map((a) => ({ a, t: chipText(a) })).filter((x) => x.t).slice(0, 2);
+  const el = h('article', { class: 'row' + (later ? ' later' : '') + (open ? ' open' : '') + (arrive ? ' arrive' : '') },
+    h('button', { class: 'row-head', type: 'button', 'aria-expanded': open ? 'true' : 'false', onclick: () => { open ? S.open.delete(e._k) : S.open.add(e._k); render(); } },
+      h('span', { class: 't', text: fmtTime(e.at) }),
+      h('span', { class: 'sent', text: period(later ? 'Will ' + describe(e, true) : describe(e, false)) }),
+      h('span', { class: 'tags' }, outcome(e) === 'hold' ? h('span', { class: 'chip held', text: 'held' }) : null,
+        !later && awaitingY(e) ? h('span', { class: 'chip ask', text: 'awaiting Y' }) : null,
+        chips.map(({ a, t }) => h('span', { class: 'chip' + (a.status === 'simulated' ? ' sim' : a.status === 'skipped' ? ' skip' : ''), title: a.status === 'simulated' ? 'Simulated in demo mode' : null, text: t })))));
+  if (open) {
+    const why = whyLine(e), msgs = arr(e.messages).map(obj).filter((m) => str(m.text));
+    el.append(h('div', { class: 'row-body' }, why ? h('p', { class: 'why', text: why }) : null,
+      msgs.length ? h('div', { class: 'bubbles' }, msgs.map((m, j) => h('div', { class: 'bubble' + (m.direction === 'in' ? ' me' : ''), style: { '--d': j * 180 + 'ms' } },
+        h('small', { text: (m.direction === 'in' ? userName() : 'Timo') + (m.channel === 'call' ? ', on a call' : '') }), str(m.text)))) : null,
+      !why && !msgs.length ? h('p', { class: 'why', text: 'No message was sent.' }) : null));
+  }
+  return el;
+}
+function pendingRow(p) {
+  return h('article', { class: 'row' }, h('div', { class: 'row-head', style: { cursor: 'default' } }, h('span', { class: 't', text: fmtTime(p.created_at) }),
+    h('span', { class: 'sent', text: period(str(p.summary)) }), h('span', { class: 'tags' }, h('span', { class: 'chip ask', text: 'awaiting Y' }))));
+}
+function renderNotice() {
+  const box = $('notice'); box.replaceChildren();
+  let errs = S.snap && S.snap.errors;
+  if (typeof errs === 'string') errs = [errs];
+  else if (errs && typeof errs === 'object' && !Array.isArray(errs)) errs = Object.values(errs);
+  errs = arr(errs).map((x) => typeof x === 'string' ? x : str(obj(x).message)).filter(Boolean);
+  if (!errs.length || S.errHidden) return;
+  box.append(h('div', { class: 'notice', role: 'alert' }, h('span', { text: 'Some data could not load: ' + trunc(errs.join(' · '), 200) }),
+    h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Dismiss', onclick: () => { S.errHidden = true; renderNotice(); } }, icon('x'))));
+}
+function renderFooter() {
+  const m = obj(obj(S.snap).mode), bits = [];
+  if (m.use_mocks === true) bits.push('Demo data'); else if (m.use_mocks === false) bits.push('Live data');
+  if (m.live_calls_enabled === false) bits.push('calls off'); else if (m.live_calls_enabled === true) bits.push('calls live');
+  const ex = str(m.external_execution);
+  if (/^(disabled|simulated?)$/.test(ex)) bits.push('actions simulated'); else if (ex) bits.push('external actions on');
+  $('footer').replaceChildren(h('span', { text: bits.length ? cap(bits.join(' · ')) : 'Timo dashboard' }),
+    h('button', { class: 'btn icon', type: 'button', title: 'Refresh', 'aria-label': 'Refresh', onclick: loadSnapshot }, icon('refresh')));
+}
+
+/* ---------- Replay: sweep "now" from 7am to 7pm, then wait for "Back to now" ---------- */
+function toggleReplay() {
+  if (S.replay) { cancelAnimationFrame(S.replay.raf); S.replay = null; S.doneKeys = null; render(); return; }
+  S.replay = { start: performance.now(), min: DAY0, last: -1, raf: 0, ended: false };
+  S.doneKeys = new Set(); S.showAll = false;
+  const step = (t) => {
+    if (!S.replay) return;
+    const p = clamp((t - S.replay.start) / REPLAY_MS, 0, 1);
+    S.replay.min = DAY0 + (DAY1 - DAY0) * p;
+    const whole = Math.floor(S.replay.min / 5);
+    if (whole !== S.replay.last || p >= 1) { S.replay.last = whole; S.replay.ended = p >= 1; render(); }
+    if (p < 1) S.replay.raf = requestAnimationFrame(step);
+  };
+  render(); S.replay.raf = requestAnimationFrame(step);
+}
+$('replayBtn').addEventListener('click', toggleReplay);
+
+/* ---------- Live pill (read-only GET); refetch the snapshot when the app changes ---------- */
+function setPill(state, detail) {
+  const p = $('livePill'); p.className = 'hpill ' + state; p.title = detail || '';
+  p.replaceChildren(h('span', { class: 'dot' }), h('span', { text: state === 'live' ? 'Live: connected' : 'Timo app offline' }));
+}
+async function pollLive() {
+  if (S.liveBusy) return; S.liveBusy = true;
+  try {
+    const r = obj(await getJSON('/api/live', 4000));
+    if (r.connected !== true) { setPill('offline', 'The Timo app is not reachable'); return; }
+    setPill('live', 'Connected to the Timo app');
+    const sig = JSON.stringify([arr(r.outbox).length, arr(r.thread).length, arr(r.sessions).map((x) => [obj(x).sessionId, obj(x).status, obj(x).decision])]);
+    if (S.liveSig !== null && sig !== S.liveSig && !S.replay) loadSnapshot();
+    S.liveSig = sig;
+  } catch (_) { setPill('offline', 'The dashboard server is not reachable'); }
+  finally { S.liveBusy = false; }
+}
+
+render();
+loadSnapshot().then(pollLive);
+setInterval(pollLive, LIVE_MS);
+setInterval(() => { if (!S.replay) render(); }, 30000);
+})();
+</script>
+</body>
+</html>
