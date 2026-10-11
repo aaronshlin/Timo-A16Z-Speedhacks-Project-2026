@@ -1,11 +1,19 @@
-"""SQLite: fired gaps, last pick per phone, profiles."""
+"""SQLite: fired gaps, last picks, profiles, facts, interactions, pending actions."""
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from app.clock import now
-from app.models import FreeWindow, Recommendation, UserProfile
+from app.models import (
+    Fact,
+    FreeWindow,
+    Interaction,
+    PendingAction,
+    Recommendation,
+    UserProfile,
+)
 
 _DB = Path(__file__).resolve().parents[2] / "data" / "timo.db"
 
@@ -26,6 +34,24 @@ def _conn() -> sqlite3.Connection:
         );
         CREATE TABLE IF NOT EXISTS profiles (
             phone TEXT PRIMARY KEY,
+            payload TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS facts (
+            phone TEXT NOT NULL,
+            key TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            PRIMARY KEY (phone, key)
+        );
+        CREATE TABLE IF NOT EXISTS interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL,
+            ts TEXT NOT NULL,
+            payload TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS pending_actions (
+            id TEXT PRIMARY KEY,
+            phone TEXT NOT NULL,
+            status TEXT NOT NULL,
             payload TEXT NOT NULL
         );
         """
@@ -88,4 +114,64 @@ def save_profile(profile: UserProfile) -> None:
         conn.execute(
             "INSERT OR REPLACE INTO profiles (phone, payload) VALUES (?, ?)",
             (profile.phone, payload),
+        )
+
+
+def get_facts(phone: str) -> list[Fact]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT payload FROM facts WHERE phone = ? ORDER BY key", (phone,)
+        ).fetchall()
+    return [Fact.model_validate_json(row["payload"]) for row in rows]
+
+
+def save_fact(phone: str, fact: Fact) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO facts (phone, key, payload) VALUES (?, ?, ?)",
+            (phone, fact.key, fact.model_dump_json()),
+        )
+
+
+def add_interaction(phone: str, item: Interaction) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO interactions (phone, ts, payload) VALUES (?, ?, ?)",
+            (phone, item.ts.isoformat(), item.model_dump_json()),
+        )
+
+
+def get_interactions(phone: str, since: datetime, limit: int = 50) -> list[Interaction]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT payload FROM interactions WHERE phone = ? AND ts >= ? "
+            "ORDER BY id DESC LIMIT ?",
+            (phone, since.isoformat(), limit),
+        ).fetchall()
+    return [Interaction.model_validate_json(row["payload"]) for row in reversed(rows)]
+
+
+def add_pending(phone: str, action: PendingAction) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO pending_actions (id, phone, status, payload) "
+            "VALUES (?, ?, 'pending', ?)",
+            (action.id, phone, action.model_dump_json()),
+        )
+
+
+def get_pending(phone: str) -> list[PendingAction]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT payload FROM pending_actions WHERE phone = ? AND status = 'pending' "
+            "ORDER BY rowid",
+            (phone,),
+        ).fetchall()
+    return [PendingAction.model_validate_json(row["payload"]) for row in rows]
+
+
+def set_pending_status(action_id: str, status: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE pending_actions SET status = ? WHERE id = ?", (status, action_id)
         )
