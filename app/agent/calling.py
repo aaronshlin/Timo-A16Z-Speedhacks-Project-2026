@@ -78,6 +78,7 @@ class CallService:
     def bind(self, engine, loop):
         self.engine, self.loop = engine, loop
         engine.result_handler = self.on_result
+        engine.miss_handler = self.on_missed
 
     def _update(self, session):
         with self.connect() as db:
@@ -197,6 +198,37 @@ class CallService:
                        action=prepare(rec) if choice == 'go' else None,
                        receiptBody=f'Timo recorded {choice}: {rec.pick.title}. Demo only; no external work executed.')
         self._update(session)
+
+    def missed_text(self, rec, session):
+        minutes = (session.get('calendarTrigger') or {}).get('usableMinutes')
+        gap = f'{minutes}-min gap' if minutes else 'free block'
+        return (f'Missed you - called about your {gap}. {rec.pick.title}, '
+                f'about {rec.pick.minutes} min. Reply go and I will set it up.')
+
+    def miss(self, item, ended):
+        """One text after an unanswered call, then nothing. Never a second call.
+
+        AGENTS.md rule 7 caps calls at 2 a day and says to stop calling a user who
+        keeps missing them, so the follow-up is a text the user can answer whenever.
+        """
+        session = self.get_session(item['id'])
+        if not session or session.get('missTextSent'):
+            return
+        from app.brain.state import set_last_pick
+        from app.phone.dial import send_sms
+        rec = Recommendation.model_validate(session['recommendation'])
+        # "go" is answered by sms_handler, which reads the last pick.
+        set_last_pick(session['phone'], rec)
+        sent = bool(send_sms(session['phone'], self.missed_text(rec, session)))
+        session.update(missedReason=ended, missTextSent=sent)
+        self._update(session)
+
+    async def on_missed(self, item, ended):
+        # A failed text must not mark the webhook retryable; the call is still over.
+        try:
+            await asyncio.to_thread(self.miss, item, ended)
+        except Exception as error:
+            print(f'missed-call text failed for {item.get("id")}: {error}')
 
     async def on_result(self, item):
         session = self.get_session(item['id'])
