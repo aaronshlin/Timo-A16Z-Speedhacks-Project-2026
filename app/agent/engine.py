@@ -98,6 +98,8 @@ class Engine:
             raise ValueError('USER_PHONE must be E.164')
         self.env, self.path, self.client = env, Path(state_path), client
         self.result_handler = result_handler
+        # Fires when a call rang and nobody picked up. Set by CallService.bind.
+        self.miss_handler = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = asyncio.Lock()
         self.jobs = asyncio.Queue()
@@ -168,10 +170,18 @@ class Engine:
             return
         if event['type'] == 'call.ended':
             data = event.get('data', {})
-            if data.get('status') in ('busy', 'no-answer', 'failed', 'canceled', 'cancelled') or data.get('canceled'):
-                item['status'], item['error'] = 'failed', 'Call ended: ' + str(data.get('status', 'canceled'))
-            else:
-                item['status'] = 'awaiting_transcript'
+            ended = data.get('status')
+            if ended in ('busy', 'no-answer', 'failed', 'canceled', 'cancelled') or data.get('canceled'):
+                item['status'], item['error'] = 'failed', 'Call ended: ' + str(ended or 'canceled')
+                self.save()
+                # Only a call that reached the handset earns a follow-up text. A
+                # 'failed' or 'canceled' call may never have rung, and telling the
+                # user they missed it would be untrue. The guard above means a
+                # repeated webhook for this call returns before reaching here.
+                if ended in ('busy', 'no-answer') and self.miss_handler:
+                    await self.miss_handler(item, ended)
+                return
+            item['status'] = 'awaiting_transcript'
             self.save()
             return
         if event['type'] != 'call.transcribed':

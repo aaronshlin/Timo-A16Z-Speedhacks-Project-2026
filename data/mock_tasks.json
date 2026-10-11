@@ -1,74 +1,74 @@
 [
   {
-    "id": "phys41-lab-report",
-    "title": "Physics 41 lab report, friction section",
+    "id": "phys7a-lab-report",
+    "title": "Physics 7A lab report, friction section",
     "due": "2026-10-11T15:00:00-07:00",
     "est_minutes": 45,
     "context": "phone",
-    "course": "Physics 41",
-    "url": "https://canvas.stanford.edu/courses/phys41/assignments/lab-report"
+    "course": "Physics 7A",
+    "url": "https://bcourses.berkeley.edu/courses/phys7a/assignments/lab-report"
   },
   {
-    "id": "math51-pset4",
-    "title": "Math 51 problem set 4, problem 3",
+    "id": "math54-pset4",
+    "title": "Math 54 problem set 4, problem 3",
     "due": "2026-10-11T16:00:00-07:00",
     "est_minutes": 30,
     "context": "laptop",
-    "course": "Math 51",
-    "url": "https://canvas.stanford.edu/courses/math51/assignments/pset4"
+    "course": "Math 54",
+    "url": "https://bcourses.berkeley.edu/courses/math54/assignments/pset4"
   },
   {
-    "id": "cs106b-worksheet",
-    "title": "CS 106B binary trees worksheet, problem 4",
+    "id": "cs61b-worksheet",
+    "title": "CS 61B binary trees worksheet, problem 4",
     "due": "2026-10-11T17:00:00-07:00",
     "est_minutes": 15,
     "context": "laptop",
-    "course": "CS 106B",
-    "url": "https://web.stanford.edu/class/cs106b/assignments/binary-trees"
+    "course": "CS 61B",
+    "url": "https://inst.eecs.berkeley.edu/~cs61b/assignments/binary-trees"
   },
   {
-    "id": "math51-quiz-notes",
-    "title": "Math 51 quiz notes on linear maps",
+    "id": "math54-quiz-notes",
+    "title": "Math 54 quiz notes on linear maps",
     "due": "2026-10-11T19:00:00-07:00",
     "est_minutes": 15,
     "context": "phone",
-    "course": "Math 51",
-    "url": "https://canvas.stanford.edu/courses/math51/pages/linear-maps"
+    "course": "Math 54",
+    "url": "https://bcourses.berkeley.edu/courses/math54/pages/linear-maps"
   },
   {
-    "id": "phys41-briefing",
-    "title": "Physics 41 lab briefing on Atwood machines",
+    "id": "phys7a-briefing",
+    "title": "Physics 7A lab briefing on Atwood machines",
     "due": "2026-10-12T08:00:00-07:00",
     "est_minutes": 5,
     "context": "noscreen",
-    "course": "Physics 41",
-    "url": "https://canvas.stanford.edu/courses/phys41/pages/lab-briefing"
+    "course": "Physics 7A",
+    "url": "https://bcourses.berkeley.edu/courses/phys7a/pages/lab-briefing"
   },
   {
-    "id": "chem31a-summary",
-    "title": "Chem 31A chapter 4 summary, acids and bases",
+    "id": "chem1a-summary",
+    "title": "Chem 1A chapter 4 summary, acids and bases",
     "due": "2026-10-12T12:00:00-07:00",
     "est_minutes": 5,
     "context": "phone",
-    "course": "Chem 31A",
-    "url": "https://canvas.stanford.edu/courses/chem31a/pages/chapter-4"
+    "course": "Chem 1A",
+    "url": "https://bcourses.berkeley.edu/courses/chem1a/pages/chapter-4"
   },
   {
-    "id": "ee101-opamp",
-    "title": "EE 101 op-amp warm-up, question 1",
+    "id": "ee16b-opamp",
+    "title": "EE 16B op-amp warm-up, question 1",
     "due": "2026-10-12T15:00:00-07:00",
     "est_minutes": 5,
     "context": "laptop",
-    "course": "EE 101",
-    "url": "https://canvas.stanford.edu/courses/ee101/assignments/opamp"
+    "course": "EE 16B",
+    "url": "https://bcourses.berkeley.edu/courses/ee16b/assignments/opamp"
   },
   {
-    "id": "cs106b-podcast-notes",
-    "title": "CS 106B recursion podcast notes",
+    "id": "cs61b-podcast-notes",
+    "title": "CS 61B recursion podcast notes",
     "due": "2026-10-13T09:00:00-07:00",
     "est_minutes": 15,
     "context": "noscreen",
-    "course": "CS 106B",
-    "url": "https://web.stanford.edu/class/cs106b/lectures/recursion"
+    "course": "CS 61B",
+    "url": "https://inst.eecs.berkeley.edu/~cs61b/lectures/recursion"
   }
 ]

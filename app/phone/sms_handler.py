@@ -1,31 +1,39 @@
-"""Inbound texts. Dial's message.received webhook comes in through handle_dial_message;
-handle_reply is the legacy one-word loop (go, next, done, or a situation)."""
+"""Inbound texts. Dial's message.received webhook at /webhooks/dial comes in through
+handle_dial_message; handle_reply is the legacy loop: one-word replies, plus a free-text
+window like '30 min on the bus'."""
 
 import logging
+import re
+from datetime import timedelta
 
 from app.agent.actions import execute
 from app.agent.poller import find_gap
+from app.config import settings
 from app.brain.profile import get_profile, record_feedback
 from app.brain.recommend import recommend
 from app.brain.state import get_last_pick, set_last_pick
 from app.clock import now
-from app.config import settings
 from app.context.router import dispatch
-from app.context.todoist import update_status
-from app.models import Situation, TriggerEvent
+from app.models import FreeWindow, Recommendation, Situation, TriggerEvent
 from app.phone import test_user
-from app.phone.dial import send_sms
-from app.phone.notify import notify_user
+from app.phone.dial import timo_says_now, user_e164
+from app.phone.messages import format_done, format_error_fallback, format_go, format_repick
 
 log = logging.getLogger(__name__)
 
 _SITUATIONS: dict[str, Situation] = {
-    "scooter": "phone",
-    "walk": "phone",
+    "scooter": "audio",
+    "walk": "audio",
     "bus": "phone",
     "laptop": "laptop",
+    "audio": "audio",
 }
-_situation: dict[str, Situation] = {}
+last_situation: dict[str, Situation] = {}
+excluded_ids: dict[str, set[str]] = {}
+completed: dict[str, set[str]] = {}
+_MINUTES = re.compile(r"(\d+)\s*(?:min|mins|minutes)\b", re.I)
+_SITUATION_WORD = re.compile(r"\b(bus|scooter|walk|laptop|audio)\b", re.I)
+_HELP = "Reply go / next / done / bus / scooter"
 _handled: set[str] = set()
 
 
@@ -48,53 +56,133 @@ def handle_dial_message(event: dict) -> None:
         log.info("inbound text to an unknown number, ignored")
 
 
+def canonical_user(phone: str) -> str:
+    """USER_NUMBER and DEMO_PHONE share one profile. Other numbers stay as given."""
+    if phone == settings.USER_NUMBER or phone == settings.DEMO_PHONE:
+        return settings.DEMO_PHONE
+    return phone
+
+
+def reset_memory() -> None:
+    last_situation.clear()
+    excluded_ids.clear()
+    completed.clear()
+
+
+def note_fresh_pick(phone: str, pick_id: str) -> None:
+    """A new gap just fired. Drop ids from the previous gap and keep this pick."""
+    excluded_ids[canonical_user(phone)] = {pick_id}
+
+
+def _situation_for(phone: str) -> Situation:
+    return last_situation.get(canonical_user(phone), "laptop")
+
+
+def _excluded(phone: str) -> list[str]:
+    user = canonical_user(phone)
+    ids = set(excluded_ids.get(user, set()))
+    ids.update(completed.get(user, set()))
+    return list(ids)
+
+
+def _keep_pick(phone: str, pick_id: str) -> None:
+    excluded_ids.setdefault(canonical_user(phone), set()).add(pick_id)
+
+
+def _say(body: str) -> str:
+    timo_says_now(body)
+    return body
+
+
 def handle_reply(from_number: str, body: str) -> str:
+    identity = canonical_user(from_number or user_e164())
     word = body.strip().lower()
-    profile = get_profile(from_number)
-    last = get_last_pick(from_number)
+    profile = get_profile(identity)
+    last = get_last_pick(identity)
 
     if word == "go":
         if last is None:
-            reply = "No pick to run."
-        else:
-            record_feedback(from_number, last, "go")
-            reply = execute(last)
-        send_sms(from_number, reply)
-        return reply
+            return _say(format_go("No pick to run."))
+        record_feedback(identity, last, "go")
+        return _say(format_go(execute(last)))
 
     if word == "done":
         if last is None:
-            reply = "Nothing in progress."
-        else:
-            record_feedback(from_number, last, "done")
-            if last.pick.kind == "task":
-                update_status(last.pick.id, "done")
-            reply = f"Marked done: {last.pick.title}"
-        send_sms(from_number, reply)
-        return reply
+            return _say(format_go("Nothing in progress."))
+        completed.setdefault(identity, set()).add(last.pick.id)
+        record_feedback(identity, last, "done")
+        return _say(format_done(last))
 
-    if word != "next" and word not in _SITUATIONS:
-        reply = "Reply go / next / done / scooter / bus / laptop"
-        send_sms(from_number, reply)
-        return reply
+    if word == "next" or word in _SITUATIONS:
+        return _recommend_reply(identity, profile, last, word)
 
+    minutes, situation = _parse_free_text(body)
+    if minutes is None and situation is None:
+        return _say(_HELP)
+
+    if situation is not None:
+        last_situation[identity] = situation
+    else:
+        situation = _situation_for(identity)
+    window = _window_for(minutes)
+    if window is None:
+        return _say(format_error_fallback(last) if last is not None else _HELP)
+    if last is not None:
+        record_feedback(identity, last, situation)
+    label = situation if minutes is None or _SITUATION_WORD.search(body) else "next"
+    return _send_recommendation(identity, window, situation, profile, label=label)
+
+
+def _recommend_reply(identity: str, profile, last: Recommendation | None, word: str) -> str:
     window = find_gap(now(), ignore_fired=True)
     if window is None:
-        reply = "No free window right now."
-        send_sms(from_number, reply)
-        return reply
-
+        return _say(format_error_fallback(last) if last is not None else _HELP)
     if word in _SITUATIONS:
         situation = _SITUATIONS[word]
-        _situation[from_number] = situation
-        exclude: list[str] = []
+        last_situation[identity] = situation
+        label = situation
     else:
-        situation = _situation.get(from_number, "laptop")
-        exclude = [last.pick.id] if last is not None else []
-
+        situation = _situation_for(identity)
+        label = "next"
     if last is not None:
-        record_feedback(from_number, last, word)
-    rec = recommend(window, situation, profile, exclude_ids=exclude)
-    set_last_pick(from_number, rec)
-    notify_user(from_number, rec, "sms")
-    return rec.sms_text
+        record_feedback(identity, last, word)
+    return _send_recommendation(identity, window, situation, profile, label=label)
+
+
+def _send_recommendation(identity, window, situation, profile, label: str) -> str:
+    last = get_last_pick(identity)
+    try:
+        rec = recommend(window, situation, profile, exclude_ids=_excluded(identity))
+    except Exception:
+        log.exception("recommend failed")
+        return _say(format_error_fallback(last) if last is not None else _HELP)
+    set_last_pick(identity, rec)
+    _keep_pick(identity, rec.pick.id)
+    text = format_repick(rec, label)
+    return _say(text)
+
+
+def _parse_free_text(body: str) -> tuple[int | None, Situation | None]:
+    minutes = None
+    found = _MINUTES.search(body)
+    if found:
+        minutes = int(found.group(1))
+    situation = None
+    word = _SITUATION_WORD.search(body)
+    if word:
+        situation = _SITUATIONS[word.group(1).lower()]
+    return minutes, situation
+
+
+def _window_for(minutes: int | None) -> FreeWindow | None:
+    if minutes is None:
+        return find_gap(now(), ignore_fired=True)
+    if minutes < 1:
+        return None
+    start = now()
+    return FreeWindow(
+        start=start,
+        end=start + timedelta(minutes=minutes),
+        minutes=minutes,
+        next_event_title=None,
+    )

@@ -6,7 +6,7 @@ from app.brain import state
 from app.models import Recommendation, UserProfile
 
 log = logging.getLogger(__name__)
-_DEFAULT_COURSES = ["CS 106B", "Math 51", "Physics 41"]
+_DEFAULT_COURSES = ["CS 61B", "Math 54", "Physics 7A"]
 # Ranking reads affinity by course (or item id). Situation words only bump their count.
 _AFFINITY_DELTA = {"go": 1.0, "done": 1.0, "next": -1.0}
 

@@ -66,6 +66,8 @@ app.include_router(agent_router)
 
 @app.middleware("http")
 async def protect_live_routes(request, call_next):
+    if request.url.path == "/sms/inbound" or request.url.path.startswith("/inbox"):
+        return await call_next(request)
     if request.url.path.startswith("/sms"):
         return JSONResponse({"error": "SMS dispatch is disabled"}, 403)
     if request.url.path in ("/health", "/webhooks/dial", "/voice/webhooks/dial", "/voice/calendar-gap"):
