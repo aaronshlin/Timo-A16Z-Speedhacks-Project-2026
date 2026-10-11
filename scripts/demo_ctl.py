@@ -137,6 +137,10 @@ def preflight(mode):
     for key in ['CALL_DEMO_WINDOW_START', 'CALL_DEMO_WINDOW_END', 'MOCK_CALENDAR_PATH']:
         cfg[key] = ''
     cfg['ALLOW_DEMO_CALENDAR_CALLS'] = 'false'
+    if mock_demo:
+        # USE_MOCKS alone does not disable every optional client (notably LLM).
+        for key in ['ANTHROPIC_API_KEY', 'DIAL_API_KEY', 'DARWIN_API_KEY', 'TODOIST_TOKEN']:
+            cfg[key] = ''
     # These launcher-only aliases should not enter the app config or logs.
     for key in ['USER_PHONE', 'TRIGGER_TOKEN', 'PORT', 'MOCK_DEMO']:
         cfg.pop(key, None)
