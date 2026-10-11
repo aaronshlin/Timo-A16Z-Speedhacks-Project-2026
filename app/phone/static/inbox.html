@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Timo</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f0e8;
+      --header: #fffdf8;
+      --ink: #1c1915;
+      --muted: #6f675e;
+      --line: #e4ddd2;
+      --timo: #fffdf8;
+      --timo-ink: #1c1915;
+      --user: #1f6b45;
+      --user-ink: #f7fff9;
+      --chip: #fffdf8;
+      --chip-ink: #1c1915;
+      --shadow: 0 8px 28px rgba(40, 30, 15, 0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121410;
+        --header: #1a1d18;
+        --ink: #f3efe6;
+        --muted: #a39b90;
+        --line: #2a2e28;
+        --timo: #232822;
+        --timo-ink: #f3efe6;
+        --user: #2f8f5b;
+        --user-ink: #f4fff7;
+        --chip: #232822;
+        --chip-ink: #f3efe6;
+        --shadow: none;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "Iowan Old Style", Palatino, Georgia, serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .phone {
+      max-width: 480px;
+      height: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: calc(14px + env(safe-area-inset-top)) 16px 12px;
+      background: var(--header);
+      border-bottom: 1px solid var(--line);
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #2f8f5b;
+    }
+    header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    header a {
+      margin-left: auto;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    #thread {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 14px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bubble {
+      max-width: 84%;
+      padding: 10px 12px 8px;
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+      font-size: 16px;
+    }
+    .bubble.timo {
+      align-self: flex-start;
+      background: var(--timo);
+      color: var(--timo-ink);
+      border-bottom-left-radius: 6px;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: var(--user);
+      color: var(--user-ink);
+      border-bottom-right-radius: 6px;
+    }
+    .bubble a { color: inherit; }
+    .meta {
+      display: block;
+      margin-top: 6px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.01em;
+      opacity: 0.72;
+    }
+    .composer {
+      padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+      background: var(--header);
+      border-top: 1px solid var(--line);
+    }
+    .chips {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .chips button, .row button, .row input {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    .chips button {
+      border: 1px solid var(--line);
+      background: var(--chip);
+      color: var(--chip-ink);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+    .row { display: flex; gap: 8px; }
+    .row input {
+      flex: 1;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 12px 14px;
+      font-size: 16px;
+    }
+    .row button {
+      border: 0;
+      background: var(--user);
+      color: var(--user-ink);
+      border-radius: 999px;
+      padding: 0 16px;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <header>
+      <span class="brand">
+        <span class="dot" aria-hidden="true"></span>
+        <h1>Timo</h1>
+      </span>
+      <a id="onboard" href="/inbox/demo-onboarding">Demo: onboard</a>
+    </header>
+    <div id="thread" aria-live="polite"></div>
+    <form class="composer" id="composer">
+      <div class="chips">
+        <button type="button" data-send="go">go</button>
+        <button type="button" data-send="next">next</button>
+        <button type="button" data-send="done">done</button>
+        <button type="button" data-send="bus">bus</button>
+        <button type="button" data-send="scooter">scooter</button>
+      </div>
+      <div class="row">
+        <input id="text" name="body" autocomplete="off" placeholder="Message Timo" enterkeyhint="send">
+        <button type="submit">Send</button>
+      </div>
+    </form>
+  </div>
+  <script>
+    const thread = document.getElementById("thread");
+    const form = document.getElementById("composer");
+    const input = document.getElementById("text");
+    const seen = new Map();
+
+    function linkify(text) {
+      const escaped = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      return escaped.replace(/https?:\/\/[^\s<]+/g, (url) => {
+        return '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
+      });
+    }
+
+    function render(entries) {
+      const ids = new Set(entries.map((entry) => entry.id));
+      for (const [id, node] of seen) {
+        if (!ids.has(id)) {
+          node.remove();
+          seen.delete(id);
+        }
+      }
+      let added = false;
+      for (const entry of entries) {
+        let node = seen.get(entry.id);
+        const html = linkify(entry.body) + '<span class="meta">via Dial · ' + entry.status + '</span>';
+        if (!node) {
+          node = document.createElement("article");
+          node.className = "bubble " + (entry.direction === "user" ? "user" : "timo");
+          thread.appendChild(node);
+          seen.set(entry.id, node);
+          added = true;
+        }
+        node.innerHTML = html;
+      }
+      if (added) thread.scrollTop = thread.scrollHeight;
+    }
+
+    async function poll() {
+      try {
+        const response = await fetch("/inbox/thread?since=0");
+        const data = await response.json();
+        render(data.entries || []);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function send(body) {
+      const text = body.trim();
+      if (!text) return;
+      await fetch("/inbox/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: text }),
+      });
+      input.value = "";
+      poll();
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      send(input.value);
+    });
+    document.querySelectorAll("[data-send]").forEach((button) => {
+      button.addEventListener("click", () => send(button.dataset.send));
+    });
+    document.getElementById("onboard").addEventListener("click", async (event) => {
+      event.preventDefault();
+      await fetch("/inbox/demo-onboarding", { method: "POST" });
+      poll();
+      const timer = setInterval(poll, 400);
+      setTimeout(() => clearInterval(timer), 8000);
+    });
+    poll();
+    setInterval(poll, 1500);
+  </script>
+</body>
+</html>
