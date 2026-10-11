@@ -1,2 +1,5 @@
-"""Fictional demo data. Choices never execute external work."""
-MOCK_QUEUE = [{'id': 'alice-follow-up', 'user': 'johnson', 'priority': 1, 'title': 'Alice at Brick & Mortar follow-up - draft ready, send or hold?', 'options': ['send', 'hold'], 'receiptMessage': 'Timo recorded: Alice follow-up = {decision}. Demo only: no email was sent.'}, {'id': 'avatar-heads', 'user': 'johnson', 'priority': 2, 'title': 'Pri asked if avatar heads are approved - ship or changes?', 'options': ['ship', 'changes'], 'receiptMessage': 'Timo recorded: avatar heads = {decision}. Demo only: nothing was shipped or changed.'}, {'id': 'coffee-shop', 'user': 'johnson', 'priority': 3, 'title': '3pm moved to 4 - hold the coffee shop near the venue?', 'options': ['hold', 'skip'], 'receiptMessage': 'Timo recorded: coffee shop = {decision}. Demo only: no reservation was made.'}]
+"""Twelve fictional Timo sessions. Every dispatcher action is simulated."""
+import json
+from pathlib import Path
+
+MOCK_QUEUE = json.loads(Path(__file__).with_name('demo_sessions.json').read_text())

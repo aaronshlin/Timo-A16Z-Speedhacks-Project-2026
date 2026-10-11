@@ -1,0 +1,394 @@
+[
+  {
+    "id": "demo-ride-home",
+    "user": "johnson",
+    "priority": 1,
+    "title": "Ride back to the office",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: A mock ride request was created; pickup estimate is four minutes. Decision: {decision}.",
+    "source": "calendar+location+prefs",
+    "context": "Demo: meeting ended early; mock location is the venue; mock destination is the office; an UberX quote is $18 with pickup in 4 minutes.",
+    "say": "You're done here early. Want me to get you an Uber back to the office? It's $18, about four minutes away.",
+    "action": {
+      "tool": "rides.request",
+      "args": {
+        "pickup": "DEMO_VENUE",
+        "destination": "DEMO_OFFICE",
+        "tier": "UberX",
+        "quoted_total_usd": 18
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: A mock ride request was created; pickup estimate is four minutes.",
+    "expires_minutes": 20,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 8,
+    "confirmation": "Request the $18 UberX from this venue to the office?",
+    "answer_notes": "The pickup and destination are fixtures. Nothing is booked."
+  },
+  {
+    "id": "demo-sarah-reply",
+    "user": "johnson",
+    "priority": 2,
+    "title": "Reply to Sarah",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock reply to Sarah was saved. Decision: {decision}.",
+    "source": "email+calendar",
+    "context": "Demo: Sarah asked which time Thursday works; the mock calendar is free at 2pm. Draft: Thursday at 2pm works for me. Want to meet at the office?",
+    "say": "Sarah asked when you can meet Thursday. Two works in the demo calendar. Want me to reply, 'Thursday at two works for me. Want to meet at the office?'",
+    "action": {
+      "tool": "email.reply",
+      "args": {
+        "thread_id": "demo-sarah-thread",
+        "recipient": "sarah@example.invalid",
+        "body": "Thursday at 2pm works for me. Want to meet at the office?"
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock reply to Sarah was saved.",
+    "expires_minutes": 60,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 6,
+    "confirmation": "Send Sarah that exact reply?",
+    "answer_notes": "Sarah, the address, the thread and availability are simulated."
+  },
+  {
+    "id": "demo-zacua-follow-up",
+    "user": "johnson",
+    "priority": 3,
+    "title": "Follow up with Zacua",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock investor follow-up was saved. Decision: {decision}.",
+    "source": "email+session",
+    "context": "Demo: an investor conversation left one follow-up open: share a Timo update. Draft: Thanks for chatting. We now have calendar-triggered calls and are testing the decision loop. Happy to send a short demo after today.",
+    "say": "You still have that Zacua follow-up. I've drafted a short Timo update. Want to hear it before I send it?",
+    "action": {
+      "tool": "email.send",
+      "args": {
+        "recipient": "zacua@example.invalid",
+        "subject": "Timo update",
+        "body": "Thanks for chatting. We now have calendar-triggered calls and are testing the decision loop. Happy to send a short demo after today."
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock investor follow-up was saved.",
+    "expires_minutes": 240,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 10,
+    "confirmation": "Send Zacua the update I just read?",
+    "answer_notes": "Read the full draft when asked. Hearing it is not approval to send; ask again after reading."
+  },
+  {
+    "id": "demo-trial-renewal",
+    "user": "johnson",
+    "priority": 4,
+    "title": "Cancel an unused trial",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock renewal was stopped; access remains through the trial end. Decision: {decision}.",
+    "source": "receipt+prefs",
+    "context": "Demo: a fictional design-tool trial renews tomorrow for $15; fixture usage is zero this week; mock cancellation preserves access until the end of the trial.",
+    "say": "That design-tool trial renews tomorrow for $15, and you haven't used it this week. Want me to stop the renewal?",
+    "action": {
+      "tool": "subscription.cancel_renewal",
+      "args": {
+        "subscription_id": "demo-design-trial",
+        "next_charge_usd": 15,
+        "access_until": "demo-trial-end"
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock renewal was stopped; access remains through the trial end.",
+    "expires_minutes": 120,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 7,
+    "confirmation": "Stop this $15 renewal and keep access through the trial end?",
+    "answer_notes": "This is a fictional service, not a claim about your Figma plan. No real account is changed."
+  },
+  {
+    "id": "demo-austin-flight",
+    "user": "johnson",
+    "priority": 5,
+    "title": "Review an Austin flight",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock Austin flight option was saved for review. No ticket was bought. Decision: {decision}.",
+    "source": "search+calendar+prefs",
+    "context": "Demo: a fictional Austin flight quote is $142 total, departing 6pm, nonstop, one carry-on; quote is not live inventory. Exact travel date and airports are intentionally unfilled.",
+    "say": "I found a nonstop Austin flight for $142 in the demo. Want me to save the option so you don't have to search again?",
+    "action": {
+      "tool": "travel.save_option",
+      "args": {
+        "option_id": "demo-austin-nonstop",
+        "total_usd": 142,
+        "departure_local": "18:00",
+        "purchase": false
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock Austin flight option was saved for review. No ticket was bought.",
+    "expires_minutes": 15,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 12,
+    "confirmation": "Save this flight option for review, without buying it?",
+    "answer_notes": "This saves a shortlist entry, not a ticket. Booking needs exact dates, airports, traveler and final terms."
+  },
+  {
+    "id": "demo-pri-rsvp",
+    "user": "johnson",
+    "priority": 6,
+    "title": "Reply to Pri's invite",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock dinner RSVP was recorded as accepted. Decision: {decision}.",
+    "source": "invite+calendar",
+    "context": "Demo: Pri invited you to a Saturday dinner; fixture calendar has no conflict; RSVP is yes for one person, with no payment or reservation.",
+    "say": "Pri invited you to dinner Saturday, and the demo calendar is clear. Want me to tell her you're in?",
+    "action": {
+      "tool": "invite.respond",
+      "args": {
+        "invite_id": "demo-pri-dinner",
+        "recipient": "pri@example.invalid",
+        "response": "accepted",
+        "guests": 1
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock dinner RSVP was recorded as accepted.",
+    "expires_minutes": 180,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 5,
+    "confirmation": "Accept Pri's dinner invite for just you?",
+    "answer_notes": "The invitation and free evening are fictional, not verified plans."
+  },
+  {
+    "id": "demo-meeting-prep",
+    "user": "johnson",
+    "priority": 7,
+    "title": "Prepare a meeting brief",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock meeting brief was added to your dashboard. Decision: {decision}.",
+    "source": "calendar+document",
+    "context": "Demo: a mock project check-in starts in 25 minutes. Three supplied notes contain the agenda, open decisions and latest status; prepare a five-bullet brief with sources.",
+    "say": "Your project check-in is coming up. Want me to turn the notes into a short brief while you're away from your laptop?",
+    "action": {
+      "tool": "documents.prepare_brief",
+      "args": {
+        "source_ids": [
+          "demo-agenda",
+          "demo-status",
+          "demo-open-decisions"
+        ],
+        "format": "five_bullets",
+        "delivery": "dashboard"
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock meeting brief was added to your dashboard.",
+    "expires_minutes": 20,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 15,
+    "confirmation": "Prepare the five-bullet brief and put it on your dashboard?",
+    "answer_notes": "Preparation only. No message to attendees and no invented project status."
+  },
+  {
+    "id": "demo-review-handoff",
+    "user": "johnson",
+    "priority": 8,
+    "title": "Package a review request",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock review handoff was saved, with both open items still listed. Decision: {decision}.",
+    "source": "session+document",
+    "context": "Demo: an agent session finished a fictional avatar-review checklist. It needs the user to choose whether to hand off the report, not approve all avatars. Draft: The review notes are ready. Please check the two remaining items before shipping.",
+    "say": "The avatar review notes are ready. Want me to send Pri the checklist with the two open items, without saying everything is approved?",
+    "action": {
+      "tool": "email.send",
+      "args": {
+        "recipient": "pri@example.invalid",
+        "subject": "Avatar review checklist",
+        "body": "The review notes are ready. Please check the two remaining items before shipping.",
+        "attachment_id": "demo-review-checklist"
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock review handoff was saved, with both open items still listed.",
+    "expires_minutes": 90,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 10,
+    "confirmation": "Send Pri that checklist and the message I read, with the open items still marked?",
+    "answer_notes": "Do not treat this fixture as approval of real avatar work. Mock attachment contains only fake review notes."
+  },
+  {
+    "id": "demo-invoice-chase",
+    "user": "johnson",
+    "priority": 9,
+    "title": "Chase a missing invoice",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock invoice request was saved. Decision: {decision}.",
+    "source": "receipt+email",
+    "context": "Demo: a mock workshop receipt says invoice pending; the supplied vendor thread is the correct destination. Draft: Could you send the invoice for my workshop registration? Thanks.",
+    "say": "The workshop receipt is missing its invoice. Want me to ask the organizer for it so you don't have to chase it later?",
+    "action": {
+      "tool": "email.reply",
+      "args": {
+        "thread_id": "demo-workshop-thread",
+        "recipient": "organizer@example.invalid",
+        "body": "Could you send the invoice for my workshop registration? Thanks."
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock invoice request was saved.",
+    "expires_minutes": 240,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 6,
+    "confirmation": "Send the organizer that invoice request?",
+    "answer_notes": "No claim about an actual payment, event or vendor."
+  },
+  {
+    "id": "demo-calendar-buffer",
+    "user": "johnson",
+    "priority": 10,
+    "title": "Add a travel buffer",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock private travel buffer was added. Nobody was invited. Decision: {decision}.",
+    "source": "calendar+location",
+    "context": "Demo: a mock meeting is at 4pm across town; mock travel estimate is 25 minutes; proposed PRIVATE buffer is 3:25-4pm with no attendees.",
+    "say": "Your next meeting is across town. Want me to protect 35 minutes before it for travel so nothing gets scheduled over the trip?",
+    "action": {
+      "tool": "calendar.create_event",
+      "args": {
+        "calendar_id": "demo-primary",
+        "start_local": "15:25",
+        "end_local": "16:00",
+        "title": "Travel buffer",
+        "visibility": "private",
+        "attendees": []
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock private travel buffer was added. Nobody was invited.",
+    "expires_minutes": 30,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 5,
+    "confirmation": "Add the private 3:25 to 4pm travel buffer, with no invitations?",
+    "answer_notes": "Times, route and calendar are fixtures. Check conflicts before a future live write."
+  },
+  {
+    "id": "demo-return-start",
+    "user": "johnson",
+    "priority": 11,
+    "title": "Start a return",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock return label was added to your dashboard. No refund has been issued. Decision: {decision}.",
+    "source": "receipt+email",
+    "context": "Demo: a fictional $39 accessory is within its return window; prepaid return shipping is free and no restocking fee; user previously marked it unwanted. Initiate only the mock return, not a refund claim.",
+    "say": "That accessory you didn't want is still returnable with free shipping. Want me to start the return and put the label on your dashboard?",
+    "action": {
+      "tool": "returns.initiate",
+      "args": {
+        "order_id": "demo-accessory-order",
+        "item_id": "demo-accessory",
+        "return_shipping_usd": 0,
+        "restocking_fee_usd": 0,
+        "delivery": "dashboard"
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock return label was added to your dashboard. No refund has been issued.",
+    "expires_minutes": 120,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 12,
+    "confirmation": "Start the free return for that one accessory?",
+    "answer_notes": "This is a fake order and policy. No real return, refund or charge is submitted."
+  },
+  {
+    "id": "demo-session-research",
+    "user": "johnson",
+    "priority": 12,
+    "title": "Continue paused research",
+    "options": [
+      "go",
+      "next",
+      "hold"
+    ],
+    "receiptMessage": "Demo only: The mock comparison was added to your dashboard. No accounts were created. Decision: {decision}.",
+    "source": "session+search+document",
+    "context": "Demo: a research session paused at comparing three transcription services. Sources are fixture documents; permitted work is finish a comparison of pricing and privacy, with no signup or payment.",
+    "say": "Your transcription-tool comparison is halfway done. Want me to finish the pricing and privacy table while you're out, without signing up for anything?",
+    "action": {
+      "tool": "agents.resume_work",
+      "args": {
+        "session_id": "demo-transcription-comparison",
+        "goal": "Compare three supplied options on pricing and privacy",
+        "source_ids": [
+          "demo-vendor-a",
+          "demo-vendor-b",
+          "demo-vendor-c"
+        ],
+        "allow_signup": false,
+        "allow_purchase": false,
+        "delivery": "dashboard"
+      },
+      "execution_mode": "simulate"
+    },
+    "receipt": "Demo only: The mock comparison was added to your dashboard. No accounts were created.",
+    "expires_minutes": 240,
+    "decision": "pending",
+    "demo": true,
+    "estimated_screen_minutes_saved": 20,
+    "confirmation": "Continue only that comparison and leave the result on your dashboard?",
+    "answer_notes": "This is a Timo-owned mock work session, not an assertion that Alike can resume another runtime for us."
+  }
+]

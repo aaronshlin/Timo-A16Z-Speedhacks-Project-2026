@@ -41,13 +41,15 @@ def setup(argument, root=ROOT, auth_path=None, transport=None):
             endpoint = '/webhooks/' + quote(metadata['webhookId'], safe='')
             before = api('GET', endpoint).get('webhook', {}).get('lastPingSucceededAt')
             api('POST', endpoint + '/ping', {})
-            for _ in range(10):
+            for attempt in range(30):
                 time.sleep(2)
                 stamp = api('GET', endpoint).get('webhook', {}).get('lastPingSucceededAt')
                 if stamp and stamp != before:
-                    print('Signed webhook ping VERIFIED at ' + stamp)
+                    print('Signed webhook ping VERIFIED at ' + stamp, flush=True)
                     return
-            raise ValueError('Ping enqueued but NOT verified. Check server, tunnel, and secret before retrying --ping.')
+                if attempt % 5 == 4:
+                    print('Waiting for signed webhook ping (' + str((attempt + 1) * 2) + '/60 seconds)...', flush=True)
+            raise ValueError('Signed callback not verified after 60 seconds; calls stayed blocked. Check receiver HTTP status and .timo-tunnel.log.')
         url = urlsplit(argument)
         if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/', '/webhooks/dial'):
             raise ValueError('Pass a plain public HTTPS tunnel origin.')
