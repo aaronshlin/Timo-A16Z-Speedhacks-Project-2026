@@ -1,32 +1,23 @@
-"""Reversible actions run immediately. Darwin stays behind an explicit go."""
+"""Dry-run action proposals; calendar writes, SMS and external execution are disabled."""
 
 import logging
-from datetime import timedelta
 
-from app.clock import now
-from app.context.calendar import create_block
-from app.context.todoist import update_status
 from app.models import Recommendation
 
 log = logging.getLogger(__name__)
 
 
 def run_auto_actions(rec: Recommendation) -> list[str]:
-    if rec.pick.kind != "task":
-        return []
-    ran: list[str] = []
-    start = now()
-    end = start + timedelta(minutes=rec.pick.minutes)
-    if "calendar_block" in rec.auto_actions:
-        create_block(start, end, rec.pick.title)
-        ran.append("calendar_block")
-    if "todoist_in_progress" in rec.auto_actions:
-        update_status(rec.pick.id, "in_progress")
-        ran.append("todoist_in_progress")
-    return ran
+    """Calendar trigger integration never executes writes, even with real reads."""
+    return []
 
 
 def execute(rec: Recommendation) -> str:
     log.info("would execute %s", rec.pick.title)
     print(f"would execute {rec.pick.title}")
-    return "would execute"
+    return f"Demo only: prepared {rec.pick.title}; no external work executed."
+
+
+def prepare(rec: Recommendation) -> dict:
+    return {"item_id": rec.pick.id, "title": rec.pick.title, "status": "simulated", "external_effect": False,
+            "proposed_actions": list(rec.auto_actions), "summary": "Demo only; no external work executed."}

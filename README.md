@@ -14,3 +14,7 @@ Notes:
 - Timo's calendar holds are tagged and ignored when reading, so they never create gaps. `python scripts/clear_timo_blocks.py --delete` removes them after demo runs.
 - Google expires refresh tokens after 7 days while the app is in Testing. Rerun the setup script.
 - A failed Google read is logged and treated as an empty day, so the poller stays quiet instead of crashing.
+
+## Calendar-triggered calls
+
+See [calendar call setup](calling-mvp/CALENDAR_TRIGGERS.md) for real-read dry-runs, persistent deduplication, and the preserved manual call command. Real calendar reads do not enable calls, calendar writes or SMS. Use the isolated tests for this integration; never run scripts/smoke.sh in real-read or live mode.

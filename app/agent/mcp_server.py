@@ -8,6 +8,8 @@ from app.brain.recommend import recommend as make_recommendation
 from app.clock import now
 from app.config import settings
 from app.context.todoist import get_tasks as load_tasks
+from app.brain.state import get_last_pick
+from app.agent.actions import prepare
 
 mcp = FastMCP("Timo")
 
@@ -36,3 +38,10 @@ def get_free_window() -> dict | None:
     if window is None:
         return None
     return window.model_dump(mode="json")
+
+
+@mcp.tool
+def act() -> dict:
+    """Preview a demo-only action for the current user's last pick. Never executes external work."""
+    rec = get_last_pick(settings.DEMO_PHONE)
+    return prepare(rec) if rec is not None else {"error": "no current pick", "external_effect": False}
