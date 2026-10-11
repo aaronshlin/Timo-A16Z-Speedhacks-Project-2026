@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     DIAL_API_KEY: str = ""
     DIAL_NUMBER: str = ""
+    DIAL_FROM_NUMBER_ID: str = ""
+    TIMO_NUMBER: str = "+15555550199"
+    USER_NUMBER: str = ""
+    USER_NUMBER_ID: str = ""
+    DIAL_SMS_WEBHOOK_SECRET: str = ""
+    MOCK_DIAL: bool = True
     DARWIN_API_KEY: str = ""
     GOOGLE_TOKEN_PATH: str = ""
     TODOIST_TOKEN: str = ""
