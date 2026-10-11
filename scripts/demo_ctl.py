@@ -98,11 +98,14 @@ def preflight(mode):
     if source.stat().st_mode & 0o077:
         raise ValueError('chmod 600 your private demo env file before continuing')
     cfg = read_env(source)
+    mock_demo = str(os.getenv('MOCK_DEMO', cfg.get('MOCK_DEMO', '0'))).lower() in ('1', 'true', 'yes')
+    if mock_demo and mode == 'live':
+        raise ValueError('MOCK_DEMO supports dry startup only; no live calls or provider setup')
     phone = cfg.get('DEMO_PHONE') or cfg.get('USER_PHONE', '')
     operator = cfg.get('CALL_TRIGGER_TOKEN') or cfg.get('TRIGGER_TOKEN') or secrets.token_hex(32)
     token = Path(cfg.get('GOOGLE_TOKEN_PATH') or ROOT / 'token.json').expanduser().resolve()
-    if not token.is_file():
-        raise ValueError('Complete Google consent on laptop first; token.json must exist')
+    if not mock_demo and not token.is_file():
+        raise ValueError('Complete Google consent on laptop first; token.json must exist, or use MOCK_DEMO=1')
     if not re.fullmatch(r'\+[1-9]\d{7,14}', phone):
         raise ValueError('Set DEMO_PHONE to the consenting human phone')
     if not (ROOT / 'calling-mvp/demo_sessions.json').is_file():
@@ -112,6 +115,10 @@ def preflight(mode):
         raise ValueError('Use a PORT between 1024 and 65535')
     WORK.mkdir(mode=0o700, exist_ok=True)
     os.chmod(WORK, 0o700)
+    if mock_demo:
+        # Compose still needs a bind source, but no Google credential is read.
+        token = WORK / 'mock-google-placeholder.json'
+        private_json(token, {})
     # Avoid silently resetting the existing demo cap or losing prior calls.
     previous = metadata()
     if not previous and any((ROOT / p).exists() for p in
@@ -120,18 +127,18 @@ def preflight(mode):
     (WORK / 'state').mkdir(mode=0o700, exist_ok=True)
     os.chmod(WORK / 'state', 0o700)
     meta = {**previous, 'port': port, 'google_token': str(token), 'local_origin': f'http://127.0.0.1:{port}',
-            'mode': 'dry', 'qa_event_id': previous.get('qa_event_id') or 'packaging-qa:' + secrets.token_hex(8)}
+            'mode': 'dry', 'mock_demo': mock_demo, 'qa_event_id': previous.get('qa_event_id') or 'packaging-qa:' + secrets.token_hex(8)}
     cfg.update(DEMO_PHONE=phone, USER_NUMBER=phone, CALL_TRIGGER_TOKEN=operator,
-               USE_MOCKS='false', NOW_OVERRIDE='', POLLER_ENABLED='false',
+               USE_MOCKS='true' if mock_demo else 'false', NOW_OVERRIDE=cfg.get('NOW_OVERRIDE', '') if mock_demo else '', POLLER_ENABLED='false',
                LIVE_CALLS_ENABLED='false', CALL_OPT_IN='false', RECEIPT_MODE='dashboard',
                MOCK_DIAL='true', SMS_ENABLED='false', DIAL_USER_NUMBER_ID='', USER_NUMBER_ID='',
-               GOOGLE_TOKEN_PATH='/secrets/google-token.json', CALL_STATE_PATH='/state/calls.db',
+               GOOGLE_TOKEN_PATH='' if mock_demo else '/secrets/google-token.json', CALL_STATE_PATH='/state/calls.db',
                CALL_ENGINE_STATE_PATH='/state/engine.json', CALL_SESSION_LIMIT='1')
     for key in ['CALL_DEMO_WINDOW_START', 'CALL_DEMO_WINDOW_END', 'MOCK_CALENDAR_PATH']:
         cfg[key] = ''
     cfg['ALLOW_DEMO_CALENDAR_CALLS'] = 'false'
     # These launcher-only aliases should not enter the app config or logs.
-    for key in ['USER_PHONE', 'TRIGGER_TOKEN', 'PORT']:
+    for key in ['USER_PHONE', 'TRIGGER_TOKEN', 'PORT', 'MOCK_DEMO']:
         cfg.pop(key, None)
     if mode == 'live':
         if not cfg.get('DIAL_API_KEY') or not cfg.get('DIAL_FROM_NUMBER_ID'):
@@ -196,7 +203,8 @@ def start(mode):
                      {'event_id': meta['qa_event_id'], 'available_minutes': 20})
         if result.get('mode') != 'dry_run' or result.get('status') != 'calls_disabled':
             raise ValueError('Dry reservation expectation changed; inspect without retrying')
-        print('Dry reservation verified. No call placed. Calendar token presence only, live-read QA still needed.')
+        print('Dry reservation verified. No call placed. Mock calendar and local fixtures only.' if meta.get('mock_demo')
+              else 'Dry reservation verified. No call placed. Calendar token presence only, live-read QA still needed.')
         print('Local inbox: ' + meta['local_origin'] + '/inbox')
         return
     compose('--profile', 'live', 'up', '-d', 'ingress', 'tunnel')
