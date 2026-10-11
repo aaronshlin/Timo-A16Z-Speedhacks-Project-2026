@@ -1,0 +1,17 @@
+# new file, no collision with in-flight app/* work
+.git
+**/.env
+**/.env.*
+.demo.env
+.timo-demo-package
+**/token.json
+**/credentials.json
+**/client_secret*.json
+**/.timo-*
+**/.local
+**/.tools
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.db
+**/*.log
