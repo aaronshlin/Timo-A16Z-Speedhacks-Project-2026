@@ -69,9 +69,27 @@ def _merge(events: list[Event]) -> list[Event]:
     return merged
 
 
+def _request(method: str, url: str, **kw) -> httpx.Response:
+    """Retry once on timeout.
+
+    Warm calls take ~0.3s, but the first one after a cold start pays DNS and a
+    TLS handshake and can blow the 5s budget. Without the retry that tick sees
+    an empty day and Timo silently skips the gap.
+    """
+    for attempt in (1, 2):
+        try:
+            return httpx.request(method, url, timeout=_TIMEOUT, **kw)
+        except httpx.TimeoutException:
+            if attempt == 2:
+                raise
+            log.warning("google %s timed out, retrying once", method)
+    raise AssertionError("unreachable")
+
+
 def _google_events(day: date) -> list[Event]:
     start = datetime(day.year, day.month, day.day, tzinfo=_LA)
-    resp = httpx.get(
+    resp = _request(
+        "GET",
         _API,
         params={
             "timeMin": start.isoformat(),
@@ -81,7 +99,6 @@ def _google_events(day: date) -> list[Event]:
             "maxResults": 250,
         },
         headers={"Authorization": f"Bearer {get_access_token()}"},
-        timeout=_TIMEOUT,
     )
     resp.raise_for_status()
     events = [e for e in (_to_event(item) for item in resp.json().get("items", [])) if e]
@@ -107,7 +124,8 @@ def create_block(start: datetime, end: datetime, title: str) -> str:
         print(f"create_block {block_id} {title}")
         return block_id
     try:
-        resp = httpx.post(
+        resp = _request(
+            "POST",
             _API,
             headers={"Authorization": f"Bearer {get_access_token()}"},
             json={
@@ -116,7 +134,6 @@ def create_block(start: datetime, end: datetime, title: str) -> str:
                 "end": {"dateTime": end.isoformat()},
                 "extendedProperties": {"private": {"timo": "1"}},
             },
-            timeout=_TIMEOUT,
         )
         resp.raise_for_status()
     except Exception:
