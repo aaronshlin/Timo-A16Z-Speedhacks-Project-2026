@@ -35,6 +35,7 @@ completed: dict[str, set[str]] = {}
 _MINUTES = re.compile(r"(\d+)\s*(?:min|mins|minutes)\b", re.I)
 _SITUATION_WORD = re.compile(r"\b(bus|scooter|walk|laptop|audio)\b", re.I)
 _HELP = "Reply go / next / done / bus / scooter"
+_NO_GAP = "No gap right now. Tell me your time, like '30 min on the bus'."
 _handled: set[str] = set()
 
 
@@ -124,12 +125,15 @@ def handle_reply(from_number: str, body: str) -> str:
         record_feedback(identity, last, "done")
         return _say(format_done(last), identity)
 
+    if word in ("bus", "next") and last is None:
+        return _say(_NO_GAP, identity)
+
     if word == "next" or word in _SITUATIONS:
         return _recommend_reply(identity, profile, last, word)
 
     minutes, situation = _parse_free_text(body)
     if minutes is None and situation is None:
-        return _say(_HELP, identity)
+        return _say(_NO_GAP if last is None else _HELP, identity)
 
     if situation is not None:
         last_situation[identity] = situation

@@ -160,11 +160,34 @@ def inbox_send(payload: SendIn) -> dict:
     return user_says_now(payload.body)
 
 
+def _clear_fired_gaps() -> None:
+    import app.brain.state as state
+
+    for name in ("clear_fired_gaps", "clear_gaps"):
+        if hasattr(state, name) and callable(getattr(state, name)):
+            getattr(state, name)()
+            return
+    with state._conn() as conn:
+        conn.execute("DELETE FROM fired_gaps")
+
+
+def _clear_timo_blocks() -> None:
+    import app.context.calendar as calendar
+
+    for name in ("delete_todays_timo_blocks", "clear_timo_blocks", "delete_timo_blocks"):
+        if hasattr(calendar, name) and callable(getattr(calendar, name)):
+            getattr(calendar, name)()
+            return
+    log.info("calendar has no function to delete today's Timo blocks")
+
+
 @router.post("/inbox/reset")
 def inbox_reset() -> dict:
     clear_messages()
     reset_memory()
     _seen_events.clear()
+    _clear_fired_gaps()
+    _clear_timo_blocks()
     return {"ok": True}
 
 
