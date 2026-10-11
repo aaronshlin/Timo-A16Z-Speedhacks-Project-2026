@@ -112,6 +112,14 @@ button { font: inherit; color: inherit; }
 .chip.skip { text-decoration: line-through; opacity: .6; }
 .chip.ask { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 500; }
 .chip.held { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+.chip.live { gap: 6px; background: var(--danger); border-color: transparent; color: #fff; font-weight: 500; }
+.chip.live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: blink 1.1s steps(2) infinite; }
+.chip.live.ended { background: var(--danger-soft); color: var(--danger); }
+.chip.live.ended::before { animation: none; background: var(--danger); }
+.chip.test { border-style: dashed; }
+@keyframes blink { 50% { opacity: .2; } }
+.row.liverow { background: var(--danger-soft); }
+.row.standby .t { color: var(--danger); }
 .row-body { display: flex; flex-direction: column; gap: var(--s2); padding: 0 var(--s3) var(--s3) calc(64px + var(--s2) + 4px); animation: rise var(--dur) var(--ease) both; }
 .why { margin: 0; font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
 .bubbles { display: flex; flex-direction: column; gap: 6px; max-width: 440px; }
@@ -163,7 +171,7 @@ button { font: inherit; color: inherit; }
 <script>
 (() => {
 'use strict';
-const TZ = 'America/Los_Angeles', LIVE_MS = 3000, REPLAY_MS = 20000, DAY0 = 420, DAY1 = 1140, DONE_MAX = 4;
+const TZ = 'America/Los_Angeles', LIVE_MS = 2000, REPLAY_MS = 16000, DAY0 = 420, DAY1 = 1140, DONE_MAX = 4;
 const $ = (id) => document.getElementById(id);
 const arr = (v) => Array.isArray(v) ? v : [];
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
@@ -218,7 +226,8 @@ function minOfDay(v) {
 const fmtMin = (m) => { const hr = Math.floor(m / 60) % 24; return `${hr % 12 || 12}:${String(Math.floor(m % 60)).padStart(2, '0')}${hr < 12 ? 'am' : 'pm'}`; };
 
 /* ---------- State ---------- */
-const S = { snap: null, entries: [], open: new Set(), showAll: false, showDay: false, replay: null, doneKeys: null, errHidden: false, errKey: '', liveSig: null, liveBusy: false };
+const S = { snap: null, entries: [], open: new Set(), showAll: false, showDay: false, replay: null, doneKeys: null, errHidden: false, errKey: '', liveSig: null, liveBusy: false,
+  live: { connected: false, sessions: [], preview: {}, readiness: {} }, standbyIn: false };
 
 /* ---------- Data loading ---------- */
 async function getJSON(url, ms = 5000) {
@@ -309,6 +318,24 @@ function chipText(a) {
 }
 const awaitingY = (e) => arr(e.pending).length > 0 || arr(e.actions).some((a) => obj(a).status === 'pending_confirmation');
 
+/* ---------- Live calls, read from the running Timo app's /voice/sessions ---------- */
+const CALL_DONE = /^(awaiting_transcript|resolving|resolved|processed|processing|finished|ending|ended|completed)$/;
+const CALL_FAIL = /^(failed|call_unknown|needs_review|unavailable|limit_reached)$/;
+const liveCalls = () => S.live.sessions.filter((s) => (s.mode === 'live' || s.mode === 'dry_run') && toDate(s.createdAt));
+function callState(s) {
+  const st = str(s.status), cs = str(s.conversationStatus), dec = str(s.decision);
+  if (s.mode !== 'live') return { key: 'test', label: 'Test run, not dialed' };
+  if (CALL_FAIL.test(st)) return { key: 'fail', label: 'Live call · didn’t connect' };
+  if (CALL_DONE.test(st) || CALL_DONE.test(cs) || (dec && dec !== 'pending')) return { key: 'ended', label: 'Live call · ended' };
+  if (!str(s.callId)) return { key: 'dialing', label: 'Live · dialing' };
+  return { key: 'active', label: 'Live call · in progress' };
+}
+const callTitle = (s) => str(obj(obj(s.recommendation).pick).title) || str(obj(s.fixture).title);
+const activeCall = () => liveCalls().find((s) => s.mode === 'live' && ['dialing', 'active'].includes(callState(s).key));
+const recentCall = () => liveCalls().some((s) => Date.now() - toDate(s.createdAt).getTime() < 15 * 60e3);
+const about = (t) => t ? ` about ${lc(t)}` : '';
+const byAt = (a, b) => ((toDate(a.at) || 0) - (toDate(b.at) || 0));
+
 /* ---------- Sky gradient follows "now" ---------- */
 const SKY = [[0, ['#1c2340', '#3b4a78', '#6d5a7a']], [360, ['#2c3561', '#77709f', '#c99088']], [450, ['#5a6aa0', '#c3a9c8', '#e8a48a']],
   [560, ['#4a67c9', '#8c9ff2', '#d3bfda']], [720, ['#3e5bd6', '#7d92f5', '#a6b4fa']], [900, ['#4560c4', '#8f9ef0', '#c7b0d4']],
@@ -327,7 +354,7 @@ function render() {
   const nm = nowMin();
   setSky(nm);
   const rb = $('replayBtn');
-  rb.replaceChildren(icon(S.replay ? 'x' : 'play', 12), S.replay ? (S.replay.ended ? 'Back to now' : 'Stop replay') : 'Replay day');
+  rb.replaceChildren(icon(S.replay ? 'x' : 'play', 12), S.replay ? 'Stop' : 'Run through the day');
   renderFooter();
   if (!S.snap) {
     $('nowline').textContent = `Now ${fmtMin(nm)}.`;
@@ -337,12 +364,16 @@ function render() {
     return;
   }
   const shown = S.entries.filter((e) => outcome(e) !== 'nothing');
-  const done = shown.filter(isDone).reverse(), later = shown.filter((e) => !isDone(e));
+  const lives = S.replay ? [] : liveCalls().map((s) => ({ _k: 'live:' + str(s.sessionId), _live: s, at: s.createdAt }));
+  const done = shown.filter(isDone).concat(lives).sort(byAt).reverse(), later = shown.filter((e) => !isDone(e));
+  const standby = !S.replay && !recentCall(), act = !S.replay && activeCall(), name = userName();
   const quiet = S.entries.filter((e) => outcome(e) === 'nothing' && isDone(e)).length;
   const prev = S.doneKeys; S.doneKeys = new Set(done.map((e) => e._k));
   const next = later[0];
   $('nowline').replaceChildren(h('span', { text: `Now ${nm == null ? '' : fmtMin(nm)}. ` }),
-    h('span', { class: 'next', text: next ? `Next: ${fmtTime(next.at)}, ${period(describe(next, true))}` : 'Nothing else planned today.' }));
+    h('span', { class: 'next', text: act ? (callState(act).key === 'dialing' ? `Timo is calling ${name}, live.` : `Timo is on a live call with ${name}.`)
+      : standby ? `Next: right now, Timo calls ${name} live${about(str(S.live.preview.title))}.`
+      : next ? `Next: ${fmtTime(next.at)}, ${period(describe(next, true))}` : 'Nothing else planned today.' }));
   renderNotice();
   const pend = arr(obj(obj(S.snap).user).pending).map(obj).filter((p) => str(p.summary) && !S.entries.some((e) => arr(e.pending).some((q) => str(obj(q).id) && str(obj(q).id) === str(p.id))));
   const visible = S.showAll ? done : done.slice(0, DONE_MAX);
@@ -354,7 +385,8 @@ function render() {
         S.showAll ? 'Show fewer' : `Show all ${done.length}`)) : null,
       quiet ? h('p', { class: 'footnote', text: `Checked ${quiet} other gap${quiet === 1 ? '' : 's'}, nothing worth interrupting for.` }) : null),
     h('section', { class: 'sec' }, h('h2', { text: 'Coming up' }),
-      later.length ? h('div', { class: 'rows' }, later.map((e) => row(e, true, false))) : h('div', { class: 'empty-line', text: 'Nothing else planned today.' })));
+      later.length || standby ? h('div', { class: 'rows' }, standby ? standbyRow() : null, later.map((e) => row(e, true, false)))
+        : h('div', { class: 'empty-line', text: 'Nothing else planned today.' })));
 }
 function contextLine() {
   const snap = obj(S.snap), user = obj(snap.user), day = obj(snap.day);
@@ -373,7 +405,32 @@ function contextLine() {
   items.sort((a, b) => a.m - b.m);
   return h('div', {}, line, h('div', { class: 'day' }, items.map((x) => x.el)));
 }
+function liveRow(e, arrive) {
+  const s = e._live, st = callState(s), open = S.open.has(e._k), title = callTitle(s), name = userName(), dec = str(s.decision);
+  const said = str(obj(s.fixture).say) || str(obj(s.recommendation).speech_text);
+  const sent = s.mode === 'live' ? `Called ${name} live over Dial${about(title)}` : `Test run: would call ${name}${about(title)}`;
+  const el = h('article', { class: 'row' + (s.mode === 'live' ? ' liverow' : '') + (open ? ' open' : '') + (arrive ? ' arrive' : '') },
+    h('button', { class: 'row-head', type: 'button', 'aria-expanded': open ? 'true' : 'false', onclick: () => { open ? S.open.delete(e._k) : S.open.add(e._k); render(); } },
+      h('span', { class: 't', text: fmtTime(s.createdAt) }),
+      h('span', { class: 'sent', text: period(sent) }),
+      h('span', { class: 'tags' }, h('span', { class: 'chip ' + (s.mode === 'live' ? 'live' + (st.key === 'ended' || st.key === 'fail' ? ' ended' : '') : 'test'), text: st.label }),
+        dec && dec !== 'pending' ? h('span', { class: 'chip', text: dec === 'go' ? 'Said yes' : cap(human(dec)) }) : null)));
+  if (open) {
+    el.append(h('div', { class: 'row-body' },
+      h('p', { class: 'why', text: `Placed through Dial at ${fmtTime(s.createdAt)}${str(s.callId) ? ' · call ' + trunc(str(s.callId), 16) : ''}.` }),
+      said ? h('div', { class: 'bubbles' }, h('div', { class: 'bubble' }, h('small', { text: 'Timo, on the call' }), said)) : null,
+      str(s.receiptBody) ? h('p', { class: 'why', text: str(s.receiptBody) }) : null));
+  }
+  return el;
+}
+function standbyRow() {
+  return h('article', { class: 'row standby' + (S.standbyIn ? ' arrive' : '') }, h('div', { class: 'row-head', style: { cursor: 'default' } },
+    h('span', { class: 't', text: fmtMin(nowMin()) }),
+    h('span', { class: 'sent', text: `Will call ${userName()} live over Dial${about(str(S.live.preview.title))}.` }),
+    h('span', { class: 'tags' }, h('span', { class: 'chip live', text: S.live.connected ? 'Live · standing by' : 'Live · Timo app offline' }))));
+}
 function row(e, later, arrive) {
+  if (e._live) return liveRow(e, arrive);
   const open = S.open.has(e._k), acts = arr(e.actions).map(obj);
   const chips = acts.map((a) => ({ a, t: chipText(a) })).filter((x) => x.t).slice(0, 2);
   const el = h('article', { class: 'row' + (later ? ' later' : '') + (open ? ' open' : '') + (arrive ? ' arrive' : '') },
@@ -409,25 +466,29 @@ function renderNotice() {
 function renderFooter() {
   const m = obj(obj(S.snap).mode), bits = [];
   if (m.use_mocks === true) bits.push('Demo data'); else if (m.use_mocks === false) bits.push('Live data');
-  if (m.live_calls_enabled === false) bits.push('calls off'); else if (m.live_calls_enabled === true) bits.push('calls live');
+  const rd = obj(S.live.readiness);
+  if (typeof rd.live_calls_enabled === 'boolean') bits.push(rd.live_calls_enabled ? 'live calls on' : 'live calls off');
+  else if (m.live_calls_enabled === false) bits.push('calls off'); else if (m.live_calls_enabled === true) bits.push('calls live');
   const ex = str(m.external_execution);
   if (/^(disabled|simulated?)$/.test(ex)) bits.push('actions simulated'); else if (ex) bits.push('external actions on');
   $('footer').replaceChildren(h('span', { text: bits.length ? cap(bits.join(' · ')) : 'Timo dashboard' }),
     h('button', { class: 'btn icon', type: 'button', title: 'Refresh', 'aria-label': 'Refresh', onclick: loadSnapshot }, icon('refresh')));
 }
 
-/* ---------- Replay: sweep "now" from 7am to 7pm, then wait for "Back to now" ---------- */
+/* ---------- Run-through: sweep "now" from 7am to the real current time, then live mode takes over ---------- */
 function toggleReplay() {
   if (S.replay) { cancelAnimationFrame(S.replay.raf); S.replay = null; S.doneKeys = null; render(); return; }
-  S.replay = { start: performance.now(), min: DAY0, last: -1, raf: 0, ended: false };
+  const target = clamp(minOfDay(new Date()) ?? DAY1, DAY0 + 30, 1439);
+  S.replay = { start: performance.now(), min: DAY0, last: -1, raf: 0, target, ms: Math.max(6000, REPLAY_MS * (target - DAY0) / (DAY1 - DAY0)) };
   S.doneKeys = new Set(); S.showAll = false;
   const step = (t) => {
     if (!S.replay) return;
-    const p = clamp((t - S.replay.start) / REPLAY_MS, 0, 1);
-    S.replay.min = DAY0 + (DAY1 - DAY0) * p;
+    const p = clamp((t - S.replay.start) / S.replay.ms, 0, 1);
+    S.replay.min = DAY0 + (S.replay.target - DAY0) * (1 - (1 - p) * (1 - p));
+    if (p >= 1) { S.replay = null; S.standbyIn = true; render(); S.standbyIn = false; return; }
     const whole = Math.floor(S.replay.min / 5);
-    if (whole !== S.replay.last || p >= 1) { S.replay.last = whole; S.replay.ended = p >= 1; render(); }
-    if (p < 1) S.replay.raf = requestAnimationFrame(step);
+    if (whole !== S.replay.last) { S.replay.last = whole; render(); }
+    S.replay.raf = requestAnimationFrame(step);
   };
   render(); S.replay.raf = requestAnimationFrame(step);
 }
@@ -441,20 +502,23 @@ function setPill(state, detail) {
 async function pollLive() {
   if (S.liveBusy) return; S.liveBusy = true;
   try {
-    const r = obj(await getJSON('/api/live', 4000));
-    if (r.connected !== true) { setPill('offline', 'The Timo app is not reachable'); return; }
-    setPill('live', 'Connected to the Timo app');
-    const sig = JSON.stringify([arr(r.outbox).length, arr(r.thread).length, arr(r.sessions).map((x) => [obj(x).sessionId, obj(x).status, obj(x).decision])]);
-    if (S.liveSig !== null && sig !== S.liveSig && !S.replay) loadSnapshot();
+    const r = obj(await getJSON('/api/live', 4000)), ok = r.connected === true;
+    setPill(ok ? 'live' : 'offline', ok ? 'Connected to the Timo app' : 'The Timo app is not reachable');
+    S.live = { connected: ok, sessions: arr(r.sessions).map(obj), preview: obj(r.preview), readiness: obj(r.readiness) };
+  } catch (_) { setPill('offline', 'The dashboard server is not reachable'); S.live = Object.assign({}, S.live, { connected: false }); }
+  finally {
+    S.liveBusy = false;
+    const sig = JSON.stringify([S.live.connected, str(S.live.preview.title), S.live.readiness.live_calls_enabled,
+      S.live.sessions.map((x) => [x.sessionId, x.status, x.conversationStatus, x.callId, x.decision])]);
+    if (sig !== S.liveSig && !S.replay) render();
     S.liveSig = sig;
-  } catch (_) { setPill('offline', 'The dashboard server is not reachable'); }
-  finally { S.liveBusy = false; }
+  }
 }
 
 render();
 loadSnapshot().then(pollLive);
 setInterval(pollLive, LIVE_MS);
-setInterval(() => { if (!S.replay) render(); }, 30000);
+setInterval(() => { if (!S.replay) render(); }, 10000);
 })();
 </script>
 </body>

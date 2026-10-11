@@ -92,7 +92,7 @@ async def _get(client: httpx.AsyncClient, path: str):
 async def live() -> dict:
     headers = {"authorization": "Bearer " + settings.CALL_TRIGGER_TOKEN} if settings.CALL_TRIGGER_TOKEN else {}
     result: dict = {"connected": False, "base": _BASE, "fetched_at": clock.now().isoformat(), "error": None,
-                    "outbox": [], "thread": [], "sessions": [], "readiness": None}
+                    "outbox": [], "thread": [], "sessions": [], "readiness": None, "preview": None}
     async with httpx.AsyncClient(timeout=2.0, headers=headers) as client:
         try:
             await _get(client, "/health")
@@ -100,7 +100,8 @@ async def live() -> dict:
             result["error"] = type(exc).__name__
             return result
         result["connected"] = True
-        paths = {"outbox": "/outbox", "thread": "/inbox/thread", "sessions": "/voice/sessions", "readiness": "/voice/readiness"}
+        paths = {"outbox": "/outbox", "thread": "/inbox/thread", "sessions": "/voice/sessions",
+                 "readiness": "/voice/readiness", "preview": "/voice/preview"}
         replies = await asyncio.gather(*(_get(client, path) for path in paths.values()), return_exceptions=True)
     for key, reply in zip(paths, replies):
         if isinstance(reply, Exception):
@@ -110,6 +111,8 @@ async def live() -> dict:
             result[key] = reply.get("outbox", [])
         elif key == "thread":
             result[key] = reply.get("entries", [])
+        elif key == "preview":
+            result[key] = reply.get("next_session")
         else:
             result[key] = reply
     return result
