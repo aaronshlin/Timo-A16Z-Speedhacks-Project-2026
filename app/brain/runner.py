@@ -51,12 +51,12 @@ def _brief(event: TriggerEvent, mem: Memory) -> str | None:
     if channel is None:
         log.info("run type=%s holding: quiet hours or rate limit", event.type)
         return None
-    text = briefing.text(phone, event)
     if channel == "call" and not call_user(phone, briefing.script(phone, event)):
         channel = "sms"  # the call didn't go out, so text instead
+    # A call is logged as text without the ask: text_details adds whatever still waits for a yes.
+    text = briefing.text(phone, event, ask=channel == "sms")
     if channel == "sms":
         send_sms(phone, text)
-    # A call is logged with its text version, which is what text_details sends mid-call.
     memory.log_interaction(phone, "out", channel, text, proactive=True)
     log.info(
         "run type=%s channel=%s offers=%d facts=%d",

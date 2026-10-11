@@ -93,7 +93,11 @@ class CallInterpreterTests(unittest.TestCase):
         session = calling.service().sessions()[0]
         self.assertEqual((session['mode'], session['status']), ('dry_run', 'calls_disabled'))
         self.assertIn('approve_action', session['script'])
-        self.assertTrue(briefing.last(PHONE).startswith('Leave at 8:25am'))
+        # Logged without the ask; text_details adds the offer back only while it still waits for a yes.
+        self.assertEqual(briefing.details(PHONE), "Leave at 8:25am for the Berkeley campus. Done: Drafted your reply to Sarah. "
+                         "Send your drafted reply to Sarah saying you'll be 10 minutes late? Reply Y to go ahead.")
+        memory.resolve_pending(self.offer.id)
+        self.assertEqual(briefing.details(PHONE), 'Leave at 8:25am for the Berkeley campus. Done: Drafted your reply to Sarah.')
         self.assertEqual(dial.outbox, [])  # called, not texted
 
     def test_a_texted_y_runs_the_offer_once(self):

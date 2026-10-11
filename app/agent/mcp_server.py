@@ -111,7 +111,7 @@ def decline_action(user_id: str, action_id: str) -> dict:
 def text_details(user_id: str) -> dict:
     """The user wants this call's plan by text. Sends it now."""
     phone = _caller(user_id)
-    text = briefing.last(phone) if phone else None
+    text = briefing.details(phone) if phone else None
     if text is None:
         return _REFUSED if phone is None else {"ok": False, "say": "I don't have anything to send yet."}
     sent = send_sms(phone, text)

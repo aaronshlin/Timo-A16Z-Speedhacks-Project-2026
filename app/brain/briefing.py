@@ -70,20 +70,29 @@ def script(phone: str, event: TriggerEvent) -> str:
     return "\n".join(lines)
 
 
-def text(phone: str, event: TriggerEvent) -> str:
+def _ask(phone: str) -> str:
+    # A Y always answers the latest pending action, so only ask about that one.
+    latest = memory.latest_pending(phone)
+    if latest is None or latest.kind == "confirm_facts":
+        return ""
+    return f"{latest.summary}? Reply Y to go ahead."
+
+
+def text(phone: str, event: TriggerEvent, ask: bool = True) -> str:
     """The briefing as one SMS: action and time first, then what's done, then one ask."""
     parts = [plan(event)]
     done = [str(item) for item in event.payload.get("done", [])]
     if done:
         parts.append("Done: " + "; ".join(done) + ".")
-    # A Y always answers the latest pending action, so only ask about that one.
-    latest = memory.latest_pending(phone)
-    if latest is not None and latest.kind != "confirm_facts":
-        parts.append(f"{latest.summary}? Reply Y to go ahead.")
+    if ask:
+        parts.append(_ask(phone))
     return " ".join(part for part in parts if part) or "Nothing needs you right now."
 
 
-def last(phone: str) -> str | None:
-    """The latest briefing Timo called with, as text."""
+def details(phone: str) -> str | None:
+    """The latest call's briefing as a text, asking only about what still waits for a yes."""
     recent = memory.load(phone).recent
-    return next((i.text for i in reversed(recent) if i.direction == "out" and i.channel == "call"), None)
+    said = next((i.text for i in reversed(recent) if i.direction == "out" and i.channel == "call"), None)
+    if said is None:
+        return None
+    return " ".join(part for part in (said, _ask(phone)) if part)
