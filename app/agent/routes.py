@@ -4,7 +4,7 @@ import json
 from datetime import timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -15,8 +15,10 @@ from app.brain.profile import get_profile
 from app.brain.recommend import recommend
 from app import clock
 from app.config import settings
-from app.models import FreeWindow
+from app.context.router import dispatch
+from app.models import FreeWindow, TriggerEvent, TriggerType
 from app.phone.dial import outbox
+from app.phone.sms_handler import handle_dial_message
 
 router = APIRouter()
 
@@ -37,6 +39,18 @@ def demo_tick(body: TickIn | None = Body(default=None)) -> dict:
 @router.get("/outbox")
 def get_outbox() -> dict:
     return {"outbox": list(outbox)}
+
+
+class DemoTrigger(BaseModel):
+    type: TriggerType
+    payload: dict = Field(default_factory=dict)
+
+
+@router.post("/demo/trigger")
+def demo_trigger(body: DemoTrigger) -> dict:
+    """Send one trigger for the demo user through the router, as the scheduler would."""
+    dispatch(TriggerEvent(user_id=settings.DEMO_PHONE, type=body.type, payload=body.payload, ts=clock.now()))
+    return {"dispatched": body.type}
 
 
 class VoiceTrigger(BaseModel):
@@ -82,7 +96,7 @@ def voice_readiness():
             "calendar_trigger_token_present": bool(settings.CALENDAR_TRIGGER_TOKEN),
             "calendar_trigger_path": "/voice/calendar-gap", "poller_enabled": settings.POLLER_ENABLED,
             "session_limit": config.CALL_SESSION_LIMIT, "duration_cap_seconds": 180,
-            "calendar_writes_enabled": False, "sms_enabled": False, "external_execution": "disabled",
+            "calendar_writes_enabled": False, "sms_enabled": settings.SMS_ENABLED and not settings.USE_MOCKS, "external_execution": "disabled",
             "receipt_mode": "dashboard", "task_context": "mock_data"}
 
 
@@ -113,7 +127,7 @@ def mock_result(body: MockResult):
 
 @router.post("/webhooks/dial")
 @router.post("/voice/webhooks/dial")
-async def dial_webhook(request: Request):
+async def dial_webhook(request: Request, background: BackgroundTasks):
     chunks, size = [], 0
     async for chunk in request.stream():
         size += len(chunk)
@@ -128,12 +142,16 @@ async def dial_webhook(request: Request):
         event = json.loads(raw)
         if (not isinstance(event, dict) or not request.headers.get("x-dial-event-id")
                 or request.headers.get("x-dial-event-id") != event.get("id")
-                or event.get("type") not in ("call.ended", "call.transcribed", "webhook.ping")
+                or event.get("type") not in ("call.ended", "call.transcribed", "message.received", "webhook.ping")
                 or not isinstance(event.get("data", {}), dict)
                 or not isinstance(event.get("relatedObject", {}), dict)):
             raise ValueError("Invalid envelope")
     except (ValueError, UnicodeDecodeError):
         raise HTTPException(400, "Invalid event envelope")
+    if event["type"] == "message.received":
+        # A text to Timo or to the test user. Answered after the 2xx so Dial never waits on a run.
+        background.add_task(handle_dial_message, event)
+        return {"accepted": True}
     # Database writes run off the event loop so call-placement I/O cannot delay a callback.
     duplicate = calls.accept(event)
     return {"accepted": True, "duplicate": duplicate}

@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     CALENDAR_ACTIVE_END_HOUR: int = 18
     CALENDAR_BUFFER_MINUTES: int = Field(default=3, ge=0, le=30)
     RECEIPT_MODE: str = "dashboard"
+    # The second Dial number, which plays the user (phone/test_user.py). DEMO_PHONE is its E.164.
+    DIAL_USER_NUMBER_ID: str = ""
+    # Real outbound SMS through Dial. Off: texts land in the mock outbox.
+    SMS_ENABLED: bool = False
+    # Static bearer token Dial's Context MCP sends to /mcp.
+    MCP_TOKEN: str = ""
 
     @field_validator("DIAL_NUMBER")
     @classmethod

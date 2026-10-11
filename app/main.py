@@ -70,6 +70,10 @@ async def protect_live_routes(request, call_next):
         return JSONResponse({"error": "SMS dispatch is disabled"}, 403)
     if request.url.path in ("/health", "/webhooks/dial", "/voice/webhooks/dial", "/voice/calendar-gap"):
         return await call_next(request)
+    # Dial's Context MCP sends this static token on every tool call during a call.
+    if (request.url.path.startswith("/mcp") and settings.MCP_TOKEN
+            and hmac.compare_digest(request.headers.get("authorization", ""), "Bearer " + settings.MCP_TOKEN)):
+        return await call_next(request)
     if settings.LIVE_CALLS_ENABLED or not settings.USE_MOCKS:
         expected = "Bearer " + settings.CALL_TRIGGER_TOKEN
         if not settings.CALL_TRIGGER_TOKEN or not hmac.compare_digest(request.headers.get("authorization", ""), expected):

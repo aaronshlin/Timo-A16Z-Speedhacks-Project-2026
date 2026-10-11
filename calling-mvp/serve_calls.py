@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 from dotenv import dotenv_values
-from setup import setup
+from setup import connect_mcp, setup
 
 ROOT = Path(__file__).resolve().parent
 AUTH = ROOT / '.local/share/dial/auth.v1.json'
@@ -74,13 +74,20 @@ def main(argv=None):
     auth = json.loads(AUTH.read_text()) if AUTH.is_file() else {}
     if args.live and (not auth.get('email') or not auth.get('apiKey')):
         raise ValueError('Complete local Dial sign-in with verify_login.py first.')
+    timo_number = ''
     if args.live:
         with httpx.Client(headers={'Authorization': 'Bearer ' + auth['apiKey']}, timeout=5) as client:
             response = client.get('https://api.getdial.ai/api/v1/numbers')
             response.raise_for_status()
-            number = next((n for n in response.json().get('numbers', []) if n.get('id') == 'cmv44iugl00mt0ftbpptzmudz'), None)
+            numbers = response.json().get('numbers', [])
+        number = next((n for n in numbers if n.get('id') == 'cmv44iugl00mt0ftbpptzmudz'), None)
         if not number or number.get('callingEnabled') is False:
             raise ValueError('The existing outgoing number is unavailable; no number was purchased.')
+        timo_number = number.get('number') or ''
+        # Two-agent demo: the second Dial number plays the user, so Timo must call that number.
+        user_id = os.getenv('DIAL_USER_NUMBER_ID') or dotenv_values(project / '.env').get('DIAL_USER_NUMBER_ID')
+        if user_id and next((n.get('number') for n in numbers if n.get('id') == user_id), None) != phone:
+            raise ValueError('DEMO_PHONE must be the E.164 of the test user number in DIAL_USER_NUMBER_ID.')
     if args.manual_call and (ROOT / '.timo-running.json').is_file():
         running = json.loads((ROOT / '.timo-running.json').read_text())
         existing = running.get('origin', '')
@@ -107,7 +114,7 @@ def main(argv=None):
     operator = private.get('TRIGGER_TOKEN') or secrets.token_hex(32)
     calendar_token = os.environ.get('CALENDAR_TRIGGER_TOKEN') or dotenv_values(project / '.env').get('CALENDAR_TRIGGER_TOKEN') or ''
     server_env = {**env, 'DEMO_PHONE': phone, 'CALL_TRIGGER_TOKEN': operator, 'CALENDAR_TRIGGER_TOKEN': calendar_token,
-                  'DIAL_FROM_NUMBER_ID': 'cmv44iugl00mt0ftbpptzmudz', 'DIAL_NUMBER': '',
+                  'DIAL_FROM_NUMBER_ID': 'cmv44iugl00mt0ftbpptzmudz', 'DIAL_NUMBER': timo_number,
                   'LIVE_CALLS_ENABLED': 'true' if args.live else 'false', 'CALL_OPT_IN': 'true' if args.live else 'false',
                   'USE_MOCKS': 'true' if args.mock_calendar else 'false', 'NOW_OVERRIDE': '',
                   'POLLER_ENABLED': 'false' if args.manual_call else 'true', 'RECEIPT_MODE': 'dashboard'}
@@ -131,7 +138,8 @@ def main(argv=None):
                     setup(public, auth_path=AUTH)
                 private = dotenv_values(ROOT / '.env', interpolate=False)
                 operator = private['TRIGGER_TOKEN']
-                server_env.update(DIAL_API_KEY=auth['apiKey'], DIAL_WEBHOOK_SECRET=private['DIAL_WEBHOOK_SECRET'], CALL_TRIGGER_TOKEN=operator)
+                server_env.update(DIAL_API_KEY=auth['apiKey'], DIAL_WEBHOOK_SECRET=private['DIAL_WEBHOOK_SECRET'], CALL_TRIGGER_TOKEN=operator,
+                                  MCP_TOKEN=private['MCP_TOKEN'])
             server = subprocess.Popen([str(runtime), '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', str(port), '--workers', '1'],
                                       cwd=project, env=server_env)
             for _ in range(60):
@@ -147,6 +155,7 @@ def main(argv=None):
                 raise ValueError('Main app startup timed out.')
             if args.live:
                 setup('--ping', auth_path=AUTH)
+                connect_mcp(public, auth_path=AUTH)
             print('\nMain app: ' + origin, flush=True)
             print('Calendar source: ' + ('mock' if args.mock_calendar else 'Google Calendar; missing credentials suppress calls.'), flush=True)
             print('Calls: ' + ('LIVE, subject to the persistent session budget.' if args.live else 'DISABLED; eligible gaps reserve dry-run sessions.'), flush=True)

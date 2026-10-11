@@ -102,7 +102,7 @@ class CallService:
     def get_session(self, session_id):
         return next((s for s in self.sessions() if s['sessionId'] == session_id), None)
 
-    def submit(self, phone, rec, opportunity_id, event_id, metadata=None):
+    def submit(self, phone, rec, opportunity_id, event_id, metadata=None, script=None):
         validate_clock(self.config)
         if phone != self.config.DEMO_PHONE:
             return {'disposition': 'suppressed', 'reason': 'wrong_user'}
@@ -140,7 +140,8 @@ class CallService:
                     return {'disposition': 'suppressed', 'reason': 'cooldown'}
             s = {'sessionId': str(uuid.uuid4()), 'idempotencyKey': str(uuid.uuid4()), 'opportunityId': opportunity_id,
                  'mode': 'live' if live else 'dry_run', 'status': 'reserved' if live else 'calls_disabled',
-                 'phone': phone, 'recommendation': rec.model_dump(mode='json'), 'createdAt': clock.now().isoformat(),
+                 'phone': phone, 'recommendation': rec.model_dump(mode='json') if rec else None, 'script': script,
+                 'createdAt': clock.now().isoformat(),
                  'createdEpoch': current_epoch, 'callId': None, 'decision': None, 'receiptStatus': None,
                  'externalEffect': False, 'calendarTrigger': metadata}
             db.execute('INSERT INTO opportunities VALUES (?,?,?,?,?,?)',
@@ -159,10 +160,16 @@ class CallService:
                 'sessionId': s['sessionId'], 'status': s['status'], 'mode': s['mode']}
 
     async def _dial(self, session):
-        rec = Recommendation.model_validate(session['recommendation'])
-        item = {'id': session['sessionId'], 'user': 'johnson', 'priority': 0, 'title': rec.pick.title,
-                'options': ['go','next','hold'], 'status': 'pending', 'idempotencyKey': session['idempotencyKey'],
-                'instruction': instruction(rec), 'receiptMessage': 'Timo recorded: ' + rec.pick.title + ' = {decision}. Demo only; no external work executed.'}
+        item = {'id': session['sessionId'], 'user': 'johnson', 'priority': 0, 'status': 'pending',
+                'idempotencyKey': session['idempotencyKey']}
+        if session.get('script'):
+            # A briefing call has no options: the user acts mid-call through the MCP tools.
+            item.update(title='Timo briefing', instruction=session['script'],
+                        receiptMessage='Timo briefing call finished; any actions ran during the call.')
+        else:
+            rec = Recommendation.model_validate(session['recommendation'])
+            item.update(title=rec.pick.title, options=['go','next','hold'], instruction=instruction(rec),
+                        receiptMessage='Timo recorded: ' + rec.pick.title + ' = {decision}. Demo only; no external work executed.')
         async with self.engine.lock:
             self.engine.state['items'].append(item)
             self.engine.save()
@@ -172,6 +179,10 @@ class CallService:
     def place(self, phone, rec):
         key = 'manual:' + str(uuid.uuid4())
         return self.submit(phone, rec, key, key)['disposition'] == 'accepted'
+
+    def place_script(self, phone, script):
+        key = 'briefing:' + str(uuid.uuid4())
+        return self.submit(phone, None, key, key, script=script)['disposition'] == 'accepted'
 
     def accept(self, event):
         if not self.engine:
@@ -198,9 +209,22 @@ class CallService:
                        receiptBody=f'Timo recorded {choice}: {rec.pick.title}. Demo only; no external work executed.')
         self._update(session)
 
+    def record_briefing(self, session, user_turns):
+        from app.brain import memory
+        said = ' '.join(turn for turn in user_turns if turn).strip()
+        if said:
+            # What the user said on the call, kept like a text: logged, and stated facts learned.
+            memory.log_interaction(session['phone'], 'in', 'call', said)
+            memory.learn(session['phone'], said, memory.PROFILE_KEYS)
+        session.update(status='resolved', decision='briefed', receiptStatus='dashboard_only',
+                       receiptBody='Timo briefing call finished; any actions ran during the call.')
+        self._update(session)
+
     async def on_result(self, item):
         session = self.get_session(item['id'])
-        if session:
+        if session and session.get('script'):
+            await asyncio.to_thread(self.record_briefing, session, item.get('userTurns', []))
+        elif session:
             await asyncio.to_thread(self.record, session, item['decision'])
 
     async def worker(self):
