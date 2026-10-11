@@ -1,5 +1,10 @@
 #!/bin/sh
 # Strip AI attribution trailers and "generated with" lines from commit messages.
 f="$1"
-grep -viE '^co-authored-by:.*(claude|cursor|anthropic|copilot|openai|codex|gemini)|generated (with|by) .*(claude|cursor|copilot|ai)|made with .*(claude|cursor)' "$f" > "$f.tmp" || true
-mv "$f.tmp" "$f"
+tmp="$f.tmp"
+grep -viE 'co-authored-by:.*(claude|cursor|anthropic|copilot|openai|codex|gemini|cursoragent)|cursoragent@cursor\.com|generated (with|by) .*(claude|cursor|copilot|ai)|made with .*(claude|cursor)' "$f" > "$tmp" || true
+mv "$tmp" "$f"
+if grep -qiE 'cursoragent@cursor\.com|co-authored-by:.*(claude|cursor|anthropic|copilot|openai|codex|gemini)' "$f"; then
+  echo "commit-msg: blocked an AI attribution trailer" >&2
+  exit 1
+fi
