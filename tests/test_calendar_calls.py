@@ -56,6 +56,8 @@ class CalendarTests(unittest.TestCase):
         self.patch.start()
         self.clock_patch=patch('app.clock.now', return_value=NOW); self.clock_patch.start()
         self.state_patch=patch.object(state,'_DB',self.root/'memory.db'); self.state_patch.start()
+        from app.brain.profile import upsert_profile
+        upsert_profile(PHONE, channel="call")  # These cases specifically verify calendar calling.
         self.old_service=calling._service; calling._service=None
 
     def tearDown(self):
@@ -252,6 +254,7 @@ class CalendarTests(unittest.TestCase):
              patch('app.context.calendar.create_block',side_effect=AssertionError('write')), \
              patch('app.phone.dial.send_sms',side_effect=AssertionError('SMS')):
             with TestClient(main.app) as client:
+                calling.service().engine.env['MAIN_TOOLS_ENABLED'] = 'true'
                 calling.service().engine.env['VOICE_TOOLS_ENABLED'] = 'true'  # Isolated fake provider; runtime readiness has dedicated tests.
                 calling.service().accept({'id':'verified-test-ping','type':'webhook.ping','data':{}})
                 response=client.post('/voice/trigger',headers={'Authorization':'Bearer operator'},
@@ -284,7 +287,7 @@ class CalendarTests(unittest.TestCase):
         async def exercise():
             engine=Engine({'LIVE_CALLS_ENABLED':'false'},self.root/'engine.json',None)
             service=calling.service(); service.bind(engine,asyncio.get_running_loop())
-            service.submit(PHONE,REC,'fixture-miss','fixture-event')
+            service.submit(PHONE,None,'fixture-miss','fixture-event')
             session=service.sessions()[0]
             with patch('app.phone.dial.send_sms',side_effect=AssertionError('fixture SMS forbidden')):
                 await service.miss({'id':session['sessionId']},'no-answer')

@@ -94,6 +94,24 @@ def _owned(engine):
     return data
 
 
+def _main_owned(engine):
+    path = Path(engine.path).with_name('.timo-main-context-mcp.json')
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+async def _verify_connection(engine, owned, tool_count):
+    if owned.get('status') != 'connected' or not owned.get('id'):
+        return False
+    observed = (await engine.api('GET', '/context-mcps/' + quote(owned['id'], safe=''))).get('contextMcp', {})
+    return bool(observed.get('name') == owned.get('name') and observed.get('url') == owned.get('url')
+                and observed.get('status') == 'connected' and observed.get('authMode') == 'static'
+                and observed.get('toolCount') == tool_count and not observed.get('lastError'))
+
+
 async def connect_context(engine, public_url):
     """Recover this installation's connection and discover the five safe tools."""
     parsed = urlsplit(public_url)
@@ -127,7 +145,7 @@ async def connect_context(engine, public_url):
     observed = (await engine.api("GET", "/context-mcps/" + quote(connection["id"], safe=""))).get("contextMcp", {})
     if (observed.get("name") != owned["name"] or observed.get("url") != url
             or observed.get("status") != "connected" or observed.get("authMode") != "static"
-            or observed.get("toolCount") != len(TOOL_NAMES)):
+            or observed.get("toolCount") != len(TOOL_NAMES) or observed.get("lastError")):
         raise ValueError("The private voice tools were not discovered; calling remains disabled")
     owned["status"] = "connected"
     atomic_json(path, owned)
@@ -137,6 +155,7 @@ async def connect_context(engine, public_url):
 async def disconnect_context(engine):
     """Remove only the connection owned by this local installation."""
     engine.env["VOICE_TOOLS_ENABLED"] = "false"
+    engine.env["MAIN_TOOLS_ENABLED"] = "false"
     owned = _owned(engine)
     connections = (await engine.api("GET", "/context-mcps")).get("contextMcps", [])
     for connection in connections:
@@ -188,16 +207,18 @@ async def runtime_disconnect(request: Request):
 async def runtime_ready(body: ReadyIn, request: Request):
     engine = _operator(request)
     from app.agent.calling import service
+    engine.env["VOICE_TOOLS_ENABLED"] = "false"
+    engine.env["MAIN_TOOLS_ENABLED"] = "false"
     owned = _owned(engine)
     if not service().callbacks_ready or owned.get("status") != "connected" or not owned.get("id"):
         raise HTTPException(409, "Signed callbacks and private voice tools must both be ready")
-    observed = (await engine.api("GET", "/context-mcps/" + quote(owned["id"], safe=""))).get("contextMcp", {})
-    if (observed.get("name") != owned["name"] or observed.get("url") != owned.get("url")
-            or observed.get("status") != "connected" or observed.get("authMode") != "static"
-            or observed.get("toolCount") != len(TOOL_NAMES)):
+    if not await _verify_connection(engine, owned, len(TOOL_NAMES)):
         raise HTTPException(409, "Private voice tools are not connected")
+    if not await _verify_connection(engine, _main_owned(engine), 8):
+        raise HTTPException(409, "Main conversation tools are not connected")
     engine.env["VOICE_TOOLS_ENABLED"] = "true"
+    engine.env["MAIN_TOOLS_ENABLED"] = "true"
     if body.poll_calendar and getattr(request.app.state, "calendar_poller", None) is None:
         from app.agent.poller import poll_loop
         request.app.state.calendar_poller = asyncio.create_task(poll_loop())
-    return {"ready": True, "voice_tools_enabled": True, "poller_enabled": bool(getattr(request.app.state, "calendar_poller", None))}
+    return {"ready": True, "voice_tools_enabled": True, "main_tools_enabled": True, "poller_enabled": bool(getattr(request.app.state, "calendar_poller", None))}

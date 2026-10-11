@@ -15,10 +15,37 @@ from datetime import datetime
 
 import httpx
 from dotenv import dotenv_values
-from setup import connect_mcp, setup
+from setup import connect_mcp, disconnect_mcp, setup
 
 ROOT = Path(__file__).resolve().parent
 AUTH = ROOT / '.local/share/dial/auth.v1.json'
+
+
+def enabled(value):
+    return str(value).lower() in ('1', 'true', 'yes', 'on')
+
+
+def number_aliases(phone, timo_number, numbers=(), user_id=''):
+    """One enrolled E.164 identity; a second Dial persona is optional."""
+    if not re.fullmatch(r'\+[1-9]\d{7,14}', phone):
+        raise ValueError('The enrolled phone must be E.164.')
+    if timo_number and not re.fullmatch(r'\+[1-9]\d{7,14}', timo_number):
+        raise ValueError('The outgoing phone must be E.164.')
+    if timo_number == phone:
+        raise ValueError("The enrolled phone must differ from Timo's outgoing phone.")
+    matched = next((n.get('id') for n in numbers if n.get('id') == user_id
+                    and n.get('number') == phone), '') if user_id else ''
+    return {'DEMO_PHONE': phone, 'USER_NUMBER': phone, 'TIMO_NUMBER': timo_number,
+            'USER_NUMBER_ID': matched, 'DIAL_USER_NUMBER_ID': matched}
+
+
+def require_manual_readiness(readiness, phone):
+    if readiness.get('enrolled_phone') != phone:
+        raise ValueError('The running service has a different enrolled phone. Stop it before changing the call target.')
+    if not readiness.get('live_calls_enabled'):
+        raise ValueError('The running service has calls disabled. Stop it and start serve_calls.py --live before manual dialing.')
+    if not all(readiness.get(key) for key in ('signed_callback_ready', 'voice_tools_ready', 'main_tools_ready')):
+        raise ValueError('The running service has incomplete callback or tool readiness. Calls stayed blocked; restart the launcher.')
 
 
 def stop(process):
@@ -108,14 +135,17 @@ def main(argv=None):
             raise ValueError('Demo window needs at least 13 minutes remaining; choose a later 15-minute window.')
         demo_window = (start.isoformat(), end.isoformat())
         print('Demo calling window: ' + args.demo_window + '; actual clock and real Google events.', flush=True)
+    project_values = dotenv_values(project / '.env', interpolate=False)
     private = dotenv_values(ROOT / '.env', interpolate=False)
-    phone = os.getenv('DEMO_PHONE') or private.get('USER_PHONE') or dotenv_values(project / '.env').get('DEMO_PHONE')
+    phone = os.getenv('DEMO_PHONE') or private.get('USER_PHONE') or project_values.get('DEMO_PHONE')
     if not phone or not re.fullmatch(r'\+[1-9]\d{7,14}', phone):
         raise ValueError('Set your enrolled phone in calling-mvp/.env USER_PHONE or the main .env DEMO_PHONE.')
     auth = json.loads(AUTH.read_text()) if AUTH.is_file() else {}
     if args.live and (not auth.get('email') or not auth.get('apiKey')):
         raise ValueError('Complete local Dial sign-in with verify_login.py first.')
-    timo_number = ''
+    timo_number = os.getenv('DIAL_NUMBER') or project_values.get('DIAL_NUMBER') or project_values.get('TIMO_NUMBER') or ''
+    numbers = []
+    user_id = os.getenv('DIAL_USER_NUMBER_ID') or project_values.get('DIAL_USER_NUMBER_ID') or ''
     if args.live:
         with httpx.Client(headers={'Authorization': 'Bearer ' + auth['apiKey']}, timeout=5) as client:
             response = client.get('https://api.getdial.ai/api/v1/numbers')
@@ -127,10 +157,7 @@ def main(argv=None):
                 or not re.fullmatch(r'\+[1-9]\d{7,14}', number.get('number', ''))):
             raise ValueError('The existing outgoing number is unavailable; no number was purchased.')
         timo_number = number.get('number') or ''
-        # Two-agent demo: the second Dial number plays the user, so Timo must call that number.
-        user_id = os.getenv('DIAL_USER_NUMBER_ID') or dotenv_values(project / '.env').get('DIAL_USER_NUMBER_ID')
-        if user_id and next((n.get('number') for n in numbers if n.get('id') == user_id), None) != phone:
-            raise ValueError('DEMO_PHONE must be the E.164 of the test user number in DIAL_USER_NUMBER_ID.')
+    aliases = number_aliases(phone, timo_number, numbers, user_id)
     if args.manual_call and (ROOT / '.timo-running.json').is_file():
         running = json.loads((ROOT / '.timo-running.json').read_text())
         existing = running.get('origin', '')
@@ -140,8 +167,7 @@ def main(argv=None):
             except httpx.HTTPError:
                 response = None
             if response is not None and response.is_success:
-                if not response.json()['live_calls_enabled']:
-                    raise ValueError('The running service has calls disabled. Stop it and start serve_calls.py --live before manual dialing.')
+                require_manual_readiness(response.json(), phone)
                 return manual_call(existing, private['TRIGGER_TOKEN'])
     with socket.socket() as probe:
         try:
@@ -152,17 +178,24 @@ def main(argv=None):
     origin = 'http://127.0.0.1:' + str(port)
     print('Calls offer eligible tasks with up to three confirmed actions. Calendar availability: ' + ('explicit mock snapshot' if args.demo_calendar else 'mock fixtures' if args.mock_calendar else 'Google Calendar') + '.', flush=True)
     server = tunnel = None
-    context_registered = False
+    context_registered = main_context_registered = False
     env = {**os.environ, 'XDG_DATA_HOME': str(ROOT / '.local/share'), 'PYTHONUNBUFFERED': '1'}
     # The operator token is local; it is never printed. A calendar producer has a separate credential.
     import secrets
     operator = private.get('TRIGGER_TOKEN') or secrets.token_hex(32)
-    calendar_token = os.environ.get('CALENDAR_TRIGGER_TOKEN') or dotenv_values(project / '.env').get('CALENDAR_TRIGGER_TOKEN') or ''
+    calendar_token = os.environ.get('CALENDAR_TRIGGER_TOKEN') or project_values.get('CALENDAR_TRIGGER_TOKEN') or ''
     server_env = {**env, 'DEMO_PHONE': phone, 'CALL_TRIGGER_TOKEN': operator, 'CALENDAR_TRIGGER_TOKEN': calendar_token,
                   'DIAL_FROM_NUMBER_ID': 'cmv44iugl00mt0ftbpptzmudz', 'DIAL_NUMBER': timo_number,
                   'LIVE_CALLS_ENABLED': 'true' if args.live else 'false', 'CALL_OPT_IN': 'true' if args.live else 'false',
                   'USE_MOCKS': 'true' if args.mock_calendar else 'false', 'NOW_OVERRIDE': '',
-                  'POLLER_ENABLED': 'false' if args.live or args.manual_call else 'true', 'RECEIPT_MODE': 'dashboard'}
+                  'POLLER_ENABLED': 'false' if args.live or args.manual_call else 'true', 'RECEIPT_MODE': 'dashboard',
+                  'MOCK_DIAL': os.getenv('MOCK_DIAL') or project_values.get('MOCK_DIAL') or 'true',
+                  'SMS_ENABLED': os.getenv('SMS_ENABLED') or project_values.get('SMS_ENABLED') or 'false'}
+    server_env.update(aliases)
+    engine_path = Path(server_env.get('CALL_ENGINE_STATE_PATH') or project_values.get('CALL_ENGINE_STATE_PATH') or ROOT / '.timo-state.json')
+    if not engine_path.is_absolute():
+        engine_path = project / engine_path
+    main_context_path = engine_path.with_name('.timo-main-context-mcp.json')
     server_env.update(ALLOW_DEMO_CALENDAR_CALLS='true' if args.demo_calendar and args.live else 'false',
                       MOCK_CALENDAR_PATH=str(args.demo_calendar) if args.demo_calendar else '')
     if args.demo_calendar:
@@ -216,7 +249,8 @@ def main(argv=None):
                     raise ValueError('Private voice tools were not connected; calls stayed blocked.')
                 print('Private voice tools connected for conversation and simulated background tasks.', flush=True)
                 setup('--ping', auth_path=AUTH)
-                connect_mcp(public, auth_path=AUTH)
+                main_context_registered = True  # Persisted ownership reconciles an uncertain registration.
+                connect_mcp(public, auth_path=AUTH, ownership_path=main_context_path)
                 ready = httpx.post(origin + '/voice/runtime/ready', headers={'Authorization': 'Bearer ' + operator},
                                   json={'poll_calendar': not args.manual_call}, timeout=20)
                 ready.raise_for_status()
@@ -227,7 +261,9 @@ def main(argv=None):
             print('\nMain app: ' + origin, flush=True)
             print('Calendar source: ' + ('mock' if args.mock_calendar else 'Google Calendar; missing credentials suppress calls.'), flush=True)
             print('Calls: ' + ('LIVE, subject to the persistent session budget.' if args.live else 'DISABLED; eligible gaps reserve dry-run sessions.'), flush=True)
-            print('Calendar writes and SMS disabled; receipts are dashboard-only.', flush=True)
+            sms_live = not enabled(server_env['USE_MOCKS']) and not enabled(server_env['MOCK_DIAL']) and enabled(server_env['SMS_ENABLED'])
+            print('SMS: ' + ('LIVE; enabled explicitly by SMS_ENABLED and MOCK_DIAL.' if sms_live else 'LOCAL OUTBOX; no outbound SMS.') + ' Receipts stay on the dashboard.', flush=True)
+            print('Calendar writes follow the main app confirmation rules and Google scopes.', flush=True)
             if public:
                 print('Optional external producer: ' + public + '/voice/calendar-gap (CALENDAR_TRIGGER_TOKEN required).', flush=True)
             from app.agent.engine import atomic_json
@@ -251,6 +287,11 @@ def main(argv=None):
                         print('Owned voice connection cleanup will be reconciled on the next startup.', flush=True)
                 except httpx.HTTPError:
                     print('Owned voice connection cleanup will be reconciled on the next startup.', flush=True)
+            if main_context_registered:
+                try:
+                    disconnect_mcp(auth_path=AUTH, ownership_path=main_context_path)
+                except Exception:
+                    print('Owned main connection cleanup will be reconciled on the next startup.', flush=True)
             running = ROOT / '.timo-running.json'
             if server and running.is_file():
                 try:

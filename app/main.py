@@ -41,13 +41,13 @@ async def lifespan(_app: FastAPI):
     except BlockingIOError:
         instance.close()
         raise RuntimeError("Timo is already running; use its manual command instead of starting another poller")
-    async with mcp_app.lifespan(_app), voice_mcp_app.lifespan(_app), httpx.AsyncClient() as client:
+    async with mcp_app.lifespan(_app), voice_mcp_app.lifespan(_app), httpx.AsyncClient(timeout=5.0) as client:
         calls = service()
         env = {"DIAL_API_KEY": settings.DIAL_API_KEY, "DIAL_FROM_NUMBER_ID": settings.DIAL_FROM_NUMBER_ID,
                "USER_PHONE": settings.DEMO_PHONE, "DIAL_WEBHOOK_SECRET": settings.DIAL_WEBHOOK_SECRET,
                "LIVE_CALLS_ENABLED": "true" if settings.LIVE_CALLS_ENABLED else "false", "RECEIPT_MODE": "dashboard",
                "OPERATOR_TOKEN": settings.CALL_TRIGGER_TOKEN, "DIAL_NUMBER": settings.DIAL_NUMBER,
-               "VOICE_TOOLS_ENABLED": "false", "VOICE_TOOLS_REQUIRED": "true" if settings.LIVE_CALLS_ENABLED else "false"}
+               "VOICE_TOOLS_ENABLED": "false", "MAIN_TOOLS_ENABLED": "false", "VOICE_TOOLS_REQUIRED": "true" if settings.LIVE_CALLS_ENABLED else "false"}
         engine = Engine(env, engine_path, client)
         calls.bind(engine, asyncio.get_running_loop())
         bind_engine(engine)

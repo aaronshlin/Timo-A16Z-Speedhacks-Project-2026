@@ -75,9 +75,9 @@ def reset() -> None:
         _seen.clear()
 
 
-def dispatch(event: TriggerEvent) -> None:
+def dispatch(event: TriggerEvent):
     """Route one trigger into the agent. Never raises."""
-    if _is_duplicate(event):
+    if not event.payload.get("calendar_gap") and _is_duplicate(event):
         log.info("trigger user=%s type=%s dropped: debounced", event.user_id, event.type)
         return
 
@@ -97,3 +97,4 @@ def dispatch(event: TriggerEvent) -> None:
         event.type,
         "nothing" if result is None else getattr(getattr(result, "pick", None), "id", result),
     )
+    return result

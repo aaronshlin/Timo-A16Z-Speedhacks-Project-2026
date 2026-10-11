@@ -78,6 +78,7 @@ def log_interaction(
     *,
     proactive: bool = False,
     pick_id: str | None = None,
+    event_id: str | None = None,
 ) -> Interaction:
     item = Interaction(
         ts=now(),
@@ -87,7 +88,10 @@ def log_interaction(
         proactive=proactive,
         pick_id=pick_id,
     )
-    state.add_interaction(phone, item)
+    if event_id:
+        state.add_interaction_once(phone, item, event_id)
+    else:
+        state.add_interaction(phone, item)
     return item
 
 

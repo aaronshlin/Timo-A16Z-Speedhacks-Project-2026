@@ -4,6 +4,7 @@ import os
 import secrets
 import sys
 import time
+import uuid
 from pathlib import Path
 from urllib.parse import urlsplit, quote
 import httpx
@@ -25,41 +26,82 @@ def load_auth(auth_path=None):
     return auth
 
 
-def connect_mcp(origin, root=ROOT, auth_path=None, transport=None):
-    """Connect Timo's /mcp as Dial's Context MCP, so the voice agent can act mid-call.
+MAIN_MCP_TOOL_COUNT = 8
 
-    Run it once the server is up: Dial probes the URL when connecting. The tunnel URL changes
-    per launch, so an older Timo connection is replaced rather than reused.
-    """
+
+def _mcp_owned_path(root, ownership_path=None):
+    return Path(ownership_path) if ownership_path else Path(root) / '.timo-main-context-mcp.json'
+
+
+def _mcp_owned(root, ownership_path=None):
+    path = _mcp_owned_path(root, ownership_path)
+    data = json.loads(path.read_text()) if path.exists() else {'owner_id': str(uuid.uuid4())}
+    if not isinstance(data, dict) or not isinstance(data.get('owner_id'), str) or not data['owner_id']:
+        raise ValueError('Private main Context MCP ownership record is invalid.')
+    data['name'] = 'Timo main tools ' + data['owner_id']
+    return data
+
+
+def _mcp_api(client, auth, method, endpoint, body=None):
+    opts = {'headers': {'Authorization': 'Bearer ' + auth['apiKey']}}
+    if body is not None:
+        opts['json'] = body
+    response = client.request(method, 'https://api.getdial.ai/api/v1' + endpoint, **opts)
+    if not response.is_success:
+        raise ValueError(f'Dial {method} {endpoint}: HTTP {response.status_code}. No automatic write retry.')
+    return response.json() if response.content else {}
+
+
+def connect_mcp(origin, root=ROOT, auth_path=None, transport=None, ownership_path=None):
+    """Discover the existing main tools; replace only this installation's connection."""
     auth = load_auth(auth_path)
     token = dotenv_values(Path(root) / '.env', interpolate=False).get('MCP_TOKEN')
     if not token:
         raise ValueError('Run tunnel URL setup first; it writes MCP_TOKEN.')
-    url = urlsplit(origin)
-    if url.scheme != 'https' or not url.hostname:
-        raise ValueError('Pass the public HTTPS tunnel origin.')
+    parsed = urlsplit(origin)
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or parsed.path not in ('', '/')):
+        raise ValueError('Pass the plain public HTTPS tunnel origin.')
+    owned = _mcp_owned(root, ownership_path)
+    path = _mcp_owned_path(root, ownership_path)
+    url = 'https://' + parsed.netloc + '/mcp/'
     with httpx.Client(transport=transport, timeout=15) as client:
-        def api(method, endpoint, body=None):
-            opts = {'headers': {'Authorization': 'Bearer ' + auth['apiKey']}}
-            if body is not None:
-                opts['json'] = body
-            response = client.request(method, 'https://api.getdial.ai/api/v1' + endpoint, **opts)
-            if not response.is_success:
-                raise ValueError(f'Dial {method} {endpoint}: HTTP {response.status_code}. No automatic write retry.')
-            return response.json() if response.content else {}
-        for old in api('GET', '/context-mcps').get('contextMcps', []):
-            if old.get('name') == 'Timo':
-                api('DELETE', '/context-mcps/' + quote(old['id'], safe=''))
-        created = api('POST', '/context-mcps', {'name': 'Timo', 'url': 'https://' + url.netloc + '/mcp/',
-                                                'headers': {'Authorization': 'Bearer ' + token}})
+        for old in _mcp_api(client, auth, 'GET', '/context-mcps').get('contextMcps', []):
+            if old.get('name') == owned['name']:
+                _mcp_api(client, auth, 'DELETE', '/context-mcps/' + quote(old['id'], safe=''))
+        owned.update(url=url, status='connecting')
+        owned.pop('id', None)
+        atomic_json(path, owned)
+        created = _mcp_api(client, auth, 'POST', '/context-mcps', {
+            'name': owned['name'], 'url': url, 'headers': {'Authorization': 'Bearer ' + token}})
         connection = created.get('contextMcp', {})
-        if connection.get('lastError') or not connection.get('toolCount'):
-            # Not fatal: calls still work, the agent just can't act mid-call.
-            print('Context MCP status ' + str(connection.get('status')) + ' with no tools yet; check the '
-                  'Context MCPs page in the Dial dashboard and the server log.', file=sys.stderr)
-        else:
-            print('Context MCP connected: ' + str(connection['toolCount']) + ' tools')
-        return connection
+        if not isinstance(connection.get('id'), str) or not connection['id']:
+            raise ValueError('Main Context MCP response was incomplete; calls stay blocked. Restart to reconcile.')
+        owned.update(id=connection['id'], status='verifying')
+        atomic_json(path, owned)
+        observed = _mcp_api(client, auth, 'GET', '/context-mcps/' + quote(connection['id'], safe='')).get('contextMcp', {})
+        if (observed.get('name') != owned['name'] or observed.get('url') != url
+                or observed.get('status') != 'connected' or observed.get('authMode') != 'static'
+                or observed.get('toolCount') != MAIN_MCP_TOOL_COUNT or observed.get('lastError')):
+            raise ValueError('Main Context MCP tools were not verified; calls stay blocked.')
+        owned['status'] = 'connected'
+        atomic_json(path, owned)
+        print('Main Context MCP connected: ' + str(MAIN_MCP_TOOL_COUNT) + ' tools', flush=True)
+        return observed
+
+
+def disconnect_mcp(root=ROOT, auth_path=None, transport=None, ownership_path=None):
+    """Remove only this installation's main Context MCP, preserving other integrations."""
+    auth = load_auth(auth_path)
+    owned = _mcp_owned(root, ownership_path)
+    with httpx.Client(transport=transport, timeout=15) as client:
+        for connection in _mcp_api(client, auth, 'GET', '/context-mcps').get('contextMcps', []):
+            if connection.get('name') == owned['name']:
+                _mcp_api(client, auth, 'DELETE', '/context-mcps/' + quote(connection['id'], safe=''))
+    owned.pop('id', None)
+    owned.update(status='disconnected')
+    atomic_json(_mcp_owned_path(root, ownership_path), owned)
+    return {'connected': False}
 
 
 def setup(argument, root=ROOT, auth_path=None, transport=None):

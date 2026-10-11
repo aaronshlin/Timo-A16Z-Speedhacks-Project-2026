@@ -40,7 +40,7 @@ def user_e164() -> str:
 
 
 def timo_e164() -> str:
-    return settings.TIMO_NUMBER
+    return settings.DIAL_NUMBER or settings.TIMO_NUMBER
 
 
 def _ensure_loop() -> asyncio.AbstractEventLoop:
@@ -72,7 +72,7 @@ async def get_async_client() -> httpx.AsyncClient:
 
 
 def get_client():
-    if settings.MOCK_DIAL:
+    if settings.USE_MOCKS or settings.MOCK_DIAL or not settings.SMS_ENABLED:
         return None
     return _client
 
@@ -157,23 +157,13 @@ def api(method: str, path: str, body: dict | None = None) -> dict | None:
 
 
 def send_sms_now(to: str, body: str, from_number_id: str | None = None) -> bool:
-    """Text `to` from Timo's number, or from `from_number_id` (the test user's number)."""
-    line = f"SMS {to}: {body}"
-    with _lock:
-        outbox.append(line)
-    print(line)
-    if settings.USE_MOCKS or not settings.SMS_ENABLED:
-        return True
-    sent = api(
-        "POST",
-        "/messages",
-        {"to": to, "fromNumberId": from_number_id or settings.DIAL_FROM_NUMBER_ID, "body": body},
-    )
-    return sent is not None
+    """The brain and inbox share the same transport and explicit destination."""
+    entry = _run(_send_and_record(to, body, from_number_id or settings.DIAL_FROM_NUMBER_ID))
+    return entry['status'] != 'failed'
 
 
 async def send_sms(from_number_id: str, to: str, body: str) -> bool:
-    if settings.MOCK_DIAL:
+    if settings.USE_MOCKS or settings.MOCK_DIAL or not settings.SMS_ENABLED:
         return True
     try:
         client = await get_async_client()
@@ -189,20 +179,26 @@ async def send_sms(from_number_id: str, to: str, body: str) -> bool:
         return False
 
 
-async def timo_says(body: str) -> dict:
-    entry = _append("timo", body, "pending")
-    ok = await send_sms(settings.DIAL_FROM_NUMBER_ID, user_e164(), body)
-    entry["status"] = "sent" if ok else "failed"
-    line = f"SMS {user_e164()}: {body}"
+async def _send_and_record(to: str, body: str, from_number_id: str) -> dict:
+    direction = 'user' if from_number_id and from_number_id in {settings.USER_NUMBER_ID, settings.DIAL_USER_NUMBER_ID} else 'timo'
+    entry = _append(direction, body, 'pending')
+    entry['to'] = to
+    ok = await send_sms(from_number_id, to, body)
+    entry['status'] = 'sent' if ok else 'failed'
+    line = f'SMS {to}: {body}'
     with _lock:
         outbox.append(line)
     print(line)
     return entry
 
 
+async def timo_says(body: str, to: str | None = None) -> dict:
+    return await _send_and_record(to or user_e164(), body, settings.DIAL_FROM_NUMBER_ID)
+
+
 async def user_says(body: str) -> dict:
     entry = _append("user", body, "pending")
-    if settings.MOCK_DIAL:
+    if settings.USE_MOCKS or settings.MOCK_DIAL or not settings.SMS_ENABLED:
         entry["status"] = "sent"
         threading.Thread(
             target=_deliver_user_reply,
@@ -211,19 +207,19 @@ async def user_says(body: str) -> dict:
             daemon=True,
         ).start()
         return entry
-    ok = await send_sms(settings.USER_NUMBER_ID, timo_e164(), body)
+    ok = await send_sms(settings.USER_NUMBER_ID or settings.DIAL_USER_NUMBER_ID, timo_e164(), body)
     entry["status"] = "sent" if ok else "failed"
     return entry
 
 
 def _deliver_user_reply(body: str) -> None:
-    from app.phone.sms_handler import handle_reply
+    from app.phone.sms_handler import handle_dial_message
+    handle_dial_message({'id': 'local:' + uuid.uuid4().hex, 'type': 'message.received',
+        'data': {'from': user_e164(), 'to': timo_e164(), 'body': body}})
 
-    handle_reply(user_e164(), body)
 
-
-def timo_says_now(body: str) -> dict:
-    return _run(timo_says(body))
+def timo_says_now(body: str, to: str | None = None) -> dict:
+    return _run(timo_says(body, to=to))
 
 
 def user_says_now(body: str) -> dict:

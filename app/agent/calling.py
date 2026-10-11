@@ -3,6 +3,7 @@ import asyncio
 import fcntl
 import copy
 import json
+import inspect
 import re
 import sqlite3
 import threading
@@ -70,6 +71,11 @@ class CallService:
                 s = json.loads(payload)
                 s.update(status='call_unknown', error='Reserved call interrupted; reconcile before retrying')
                 db.execute('UPDATE opportunities SET status=?,payload=? WHERE opportunity_id=?', ('call_unknown', json.dumps(s), key))
+            for key, payload in db.execute("SELECT opportunity_id,payload FROM opportunities WHERE mode='sms' AND status='reserved'"):
+                item = json.loads(payload)
+                item.update(status='sms_unknown', error='Reserved text interrupted; delivery is uncertain')
+                db.execute('UPDATE opportunities SET status=?,payload=? WHERE opportunity_id=?',
+                           ('sms_unknown', json.dumps(item), key))
         self.path.chmod(0o600)
 
     def connect(self):
@@ -79,6 +85,7 @@ class CallService:
         self.engine, self.loop = engine, loop
         engine.result_handler = self.on_result
         engine.miss_handler = self.on_missed
+        engine.context_handler = self.context_for
 
     def preview_next(self):
         if self.engine:
@@ -91,6 +98,175 @@ class CallService:
             # Disabled Engine loads/migrates the local queue without a Dial client.
             engine = Engine({'LIVE_CALLS_ENABLED': 'false'}, path, None)
             return engine.next_pending()
+
+    def _engine_operation(self, callback):
+        """Use the one live Engine, or the same locked file with all calling disabled."""
+        async def apply(engine):
+            result = callback(engine)
+            return await result if inspect.isawaitable(result) else result
+        if self.engine and self.loop:
+            return asyncio.run_coroutine_threadsafe(apply(self.engine), self.loop).result(timeout=15)
+        from app.agent.engine import Engine
+        path = Path(self.config.CALL_ENGINE_STATE_PATH or _ROOT / 'calling-mvp/.timo-state.json')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.with_suffix('.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            engine = Engine({'LIVE_CALLS_ENABLED': 'false'}, path, None)
+            engine.result_handler = lambda item: self.on_result(item, engine)
+            engine.context_handler = self.context_for
+            return asyncio.run(apply(engine))
+
+    def context_for(self, phone=None):
+        # Private facts and pending action details remain in the local memory store.
+        from app.brain.profile import get_profile
+        return {'channel': get_profile(phone or self.config.DEMO_PHONE).channel, 'facts': [], 'pending': []}
+
+    def _fixture(self, item_id=None):
+        from app.agent.demo_sessions import eligible
+        if item_id is None:
+            return self.preview_next()
+        return self._engine_operation(lambda engine: next((copy.deepcopy(item) for item in engine.state['items']
+            if item['id'] == item_id and eligible(item)), None))
+
+    def _duplicate(self, opportunity_id, event_id):
+        with self.connect() as db:
+            alias = db.execute('SELECT opportunity_id FROM trigger_events WHERE event_id=?', (event_id,)).fetchone()
+            row = db.execute('SELECT payload FROM opportunities WHERE opportunity_id=?',
+                             (alias[0] if alias else opportunity_id,)).fetchone()
+        if row:
+            session = json.loads(row[0])
+            return {'disposition': 'duplicate', 'sessionId': session['sessionId'],
+                    'status': session['status'], 'mode': session['mode']}
+        return None
+
+    def has_uncertain_call(self, phone):
+        self.sessions()
+        with self.connect() as db:
+            rows = db.execute("SELECT payload FROM opportunities WHERE mode='live' AND status IN "
+                "('reserved','placing','queued','awaiting_transcript','call_unknown')").fetchall()
+        return any(json.loads(row[0]).get('phone') == phone for row in rows)
+
+    def handle_gap(self, event, mem):
+        """Calendar, text and voice use one planner decision and one durable opportunity."""
+        from app.brain import briefing, memory, rules, state
+        from app.models import FreeWindow
+        gap = event.payload['calendar_gap']
+        duplicate = self._duplicate(gap['opportunity_id'], gap['event_id'])
+        if duplicate:
+            return duplicate
+        if event.user_id != self.config.DEMO_PHONE:
+            return {'disposition': 'suppressed', 'reason': 'wrong_user'}
+        # Existing operators explicitly opted into calls before profiles existed.
+        if state.load_profile(event.user_id) is None and self.config.CALL_OPT_IN:
+            mem = mem.model_copy(update={'profile': mem.profile.model_copy(update={'channel': 'call'})})
+        channel = rules.choose_channel(mem, event.type, clock.now(), bool(event.payload.get('urgent')))
+        if channel is None:
+            return {'disposition': 'suppressed', 'reason': 'quiet_hours_or_rate_limit'}
+        rec = state.get_last_pick(event.user_id)
+        if rec and rec.pick.source == 'demo_queue' and not self._fixture(rec.pick.id):
+            rec = None
+        if rec is None and not briefing.offers(mem):
+            fixture = self._fixture()
+            if fixture:
+                rec = fixture_recommendation(fixture)
+        window = FreeWindow.model_validate(event.payload['window'])
+        if rec is None:
+            plan = f'You have {window.minutes} usable minutes before {window.next_event_title or "your next commitment"}.'
+            planned = event.model_copy(update={'payload': {**event.payload, 'plan': plan}})
+            script = briefing.script(event.user_id, planned) if channel == 'call' else None
+            text = briefing.text(event.user_id, planned)
+        else:
+            planned, script, text = event, None, rec.sms_text
+        if channel == 'call':
+            result = self.submit(event.user_id, rec, gap['opportunity_id'], gap['event_id'], gap['metadata'], script=script)
+            if result['disposition'] == 'accepted':
+                memory.log_interaction(event.user_id, 'out', 'call', rec.speech_text if rec else briefing.text(event.user_id, planned, ask=False),
+                    proactive=True, pick_id=rec.pick.id if rec else None, event_id='gap:' + result['sessionId'])
+                if rec:
+                    state.set_last_pick(event.user_id, rec)
+            return result
+        return self._submit_text(event.user_id, rec, text, gap)
+
+    def _submit_text(self, phone, rec, text, gap):
+        from app.brain import memory, state
+        from app.phone.dial import send_sms_now
+        current_epoch = time.time()
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            alias = db.execute('SELECT opportunity_id FROM trigger_events WHERE event_id=?', (gap['event_id'],)).fetchone()
+            row = db.execute('SELECT payload FROM opportunities WHERE opportunity_id=?',
+                (alias[0] if alias else gap['opportunity_id'],)).fetchone()
+            if row:
+                session = json.loads(row[0])
+                return {'disposition': 'duplicate', 'sessionId': session['sessionId'], 'status': session['status'], 'mode': session['mode']}
+            session = {'sessionId': str(uuid.uuid4()), 'opportunityId': gap['opportunity_id'], 'mode': 'sms',
+                'status': 'reserved', 'phone': phone, 'createdAt': clock.now().isoformat(),
+                'createdEpoch': current_epoch, 'recommendation': rec.model_dump(mode='json') if rec else None,
+                'calendarTrigger': gap['metadata'], 'callId': None, 'externalEffect': False}
+            db.execute('INSERT INTO opportunities VALUES (?,?,?,?,?,?)',
+                (gap['opportunity_id'], session['sessionId'], 'sms', 'reserved', current_epoch, json.dumps(session)))
+            db.execute('INSERT INTO trigger_events VALUES (?,?)', (gap['event_id'], gap['opportunity_id']))
+        try:
+            if rec and rec.pick.source == 'demo_queue':
+                text = self._engine_operation(lambda engine: engine.text_offer(phone, rec.pick.id, session['sessionId']))
+                session['fixtureId'] = rec.pick.id
+            session['text'] = text
+            sent = send_sms_now(phone, text)
+            if rec and rec.pick.source == 'demo_queue':
+                self._engine_operation(lambda engine: engine.mark_text_delivery(phone, session['sessionId'], sent))
+            else:
+                self._engine_operation(lambda engine: engine.clear_text_proposal(phone))
+            real = self.config.SMS_ENABLED and not self.config.USE_MOCKS and not self.config.MOCK_DIAL
+            session['status'] = ('text_sent' if real else 'text_simulated') if sent else 'sms_unknown'
+            session['externalEffect'] = bool(real and sent)
+            if not sent:
+                session['error'] = 'Text delivery uncertain; do not resend this opportunity'
+            if sent:
+                memory.log_interaction(phone, 'out', 'sms', text, proactive=True,
+                    pick_id=rec.pick.id if rec else None, event_id='gap:' + session['sessionId'])
+                if rec:
+                    state.set_last_pick(phone, rec)
+        except Exception:
+            session.update(status='sms_unknown', error='Text delivery uncertain; do not resend this opportunity')
+        self._update(session)
+        return {'disposition': 'accepted' if session['status'] in ('text_sent','text_simulated') else 'suppressed',
+                'sessionId': session['sessionId'], 'status': session['status'], 'mode': 'sms'}
+
+    def text_reply(self, phone, body):
+        if phone != self.config.DEMO_PHONE:
+            return None
+        normalized = body.strip().lower().rstrip('?.!')
+        if normalized in ('status', 'what was done', 'what did you do', 'what have you done'):
+            if phone != self.config.DEMO_PHONE:
+                return None
+            def status(engine):
+                receipts = [result['receipt'] for result in engine.state.get('mock_results', {}).values()
+                            if result.get('receipt')]
+                return '\n'.join(dict.fromkeys(receipts[-3:])) if receipts else 'No completed actions are recorded yet.'
+            return self._engine_operation(status)
+        from app.brain import memory, state
+        def reply(engine):
+            reference = engine.state.get('text_proposals', {}).get(phone)
+            if reference:
+                proposal = next((i for i in engine.state['items'] if i['id'] == reference['itemId']), {})
+                recent = memory.load(phone).recent
+                last_ask = next((i.text for i in reversed(recent) if i.direction == 'out' and i.channel == 'sms' and 'reply y' in i.text.lower()), '')
+                from app.agent.demo_sessions import normalize
+                if last_ask and normalize(proposal.get('confirmation', '')) not in normalize(last_ask):
+                    async def answer_latest():
+                        await engine.clear_text_proposal(phone)
+                        return None
+                    return answer_latest()
+            last = state.get_last_pick(phone)
+            if not reference and normalized in ('next', 'what else', 'another task') and last and last.pick.source == 'demo_queue':
+                item = engine.next_pending()
+                return engine.text_offer(phone, item['id'], 'sms:' + str(uuid.uuid4())) if item else 'No unexpired pending tasks remain.'
+            return engine.text_reply(phone, body)
+        return self._engine_operation(reply)
+
+    def mark_text_reply_delivery(self, phone, message, delivered):
+        if phone == self.config.DEMO_PHONE:
+            self._engine_operation(lambda engine: engine.mark_text_reply_delivery(phone, message, delivered))
 
     def _update(self, session):
         with self.connect() as db:
@@ -110,13 +286,15 @@ class CallService:
                     for key in ('decision', 'receiptBody', 'resultId', 'actionStatus', 'contextStorage'):
                         if key in primary:
                             session[key] = primary[key]
-                    session.update(status=conversation['status'], callId=conversation.get('callId'),
+                    session.update(conversationStatus=conversation['status'], callId=conversation.get('callId'),
                         conversationId=conversation['id'], maxActions=3,
                         approvedCount=len(conversation['actionIds']),
                         taskDecisions=copy.deepcopy(conversation['dispositions']),
                         actionResults=[copy.deepcopy(self.engine.state['mock_results'][rid])
                             for rid in conversation['actionIds'] if rid in self.engine.state['mock_results']],
                         externalEffect=False, receiptStatus='dashboard_only')
+                    if conversation.get('channel') != 'sms':
+                        session['status'] = conversation['status']
                     self._update(session)
                     continue
                 item = items.get(session['sessionId'])
@@ -154,7 +332,8 @@ class CallService:
                     or not self.engine or not self.loop):
                     return {'disposition': 'suppressed', 'reason': 'live_call_not_ready'}
                 if (self.engine.env.get('VOICE_TOOLS_REQUIRED') == 'true'
-                        and self.engine.env.get('VOICE_TOOLS_ENABLED') != 'true'):
+                        and (self.engine.env.get('VOICE_TOOLS_ENABLED') != 'true'
+                             or self.engine.env.get('MAIN_TOOLS_ENABLED') != 'true')):
                     return {'disposition': 'suppressed', 'reason': 'voice_tools_not_ready'}
                 from app.brain.profile import get_profile
                 hours = get_profile(phone).quiet_hours
@@ -169,10 +348,15 @@ class CallService:
                     return {'disposition': 'suppressed', 'reason': 'session_budget'}
                 if prior and current_epoch - prior[-1][1] < self.config.CALL_COOLDOWN_SECONDS:
                     return {'disposition': 'suppressed', 'reason': 'cooldown'}
-            # A briefing call carries its own script; every other call is a demo-task conversation.
+            # Preserve the planner's recommendation; fixtures are selected only for their own source.
             fixture = None
-            if script is None:
-                fixture = self.preview_next()
+            if script is None and rec is not None and rec.pick.source != 'demo_queue':
+                from app.brain import briefing
+                from app.models import TriggerEvent
+                script = briefing.script(phone, TriggerEvent(user_id=phone, type='free_slot', ts=clock.now(),
+                    payload={'plan': rec.speech_text}))
+            elif script is None:
+                fixture = self._fixture(rec.pick.id if rec else None)
                 if not fixture:
                     return {'disposition': 'suppressed', 'reason': 'no_eligible_demo_session'}
                 rec = fixture_recommendation(fixture)
@@ -282,7 +466,7 @@ class CallService:
         said = ' '.join(turn for turn in user_turns if turn).strip()
         if said:
             # What the user said on the call, kept like a text: logged, and stated facts learned.
-            memory.log_interaction(session['phone'], 'in', 'call', said)
+            memory.log_interaction(session['phone'], 'in', 'call', said, event_id='call-user:' + session['sessionId'])
             memory.learn(session['phone'], said, memory.PROFILE_KEYS)
         session.update(status='resolved', decision='briefed', receiptStatus='dashboard_only',
                        receiptBody='Timo briefing call finished; any actions ran during the call.')
@@ -306,8 +490,8 @@ class CallService:
         session = self.get_session(item.get('opportunitySessionId', item['id']))
         if not session or session.get('fixtureId') or session.get('missTextSent'):
             return
-        if session.get('script'):
-            # A briefing call has no pick: text the plan it would have given, as text_details does.
+        if session.get('script') and not session.get('recommendation'):
+            # A planner briefing has no pick: text the plan it would have given.
             sent = await asyncio.to_thread(self._text_briefing, session['phone'])
             if sent is None:
                 return
@@ -340,9 +524,34 @@ class CallService:
         except Exception as error:
             print(f'missed-call text failed for {item.get("id")}: {error}')
 
-    async def on_result(self, item):
-        if item.get('conversationId') in self.engine.state.get('conversations', {}):
-            self.sessions()  # Aggregate call state and each task result, never overwrite with one task.
+    async def on_result(self, item, engine=None):
+        engine = engine or self.engine
+        from app.brain import memory, state
+        from app.agent.demo_sessions import executable
+        if executable(item) and item.get('decision') in ('go', 'next', 'hold'):
+            conversation = engine.state.get('conversations', {}).get(item.get('conversationId'), {}) if engine else {}
+            phone = conversation.get('phone') or self.config.DEMO_PHONE
+            reference = item.get('resultId') or ':'.join(['task', item.get('conversationId', ''), item['id'], item['decision']])
+            memory.log_interaction(phone, 'out', 'sms' if conversation.get('channel') == 'sms' else 'call',
+                item.get('receiptBody') or f'Recorded {item["decision"]}: {item["title"]}.',
+                pick_id=item['id'], event_id=reference)
+            state.set_last_pick(phone, fixture_recommendation(item))
+        if engine and item.get('conversationId') in engine.state.get('conversations', {}):
+            conversation = engine.state['conversations'][item['conversationId']]
+            said = ' '.join(str(turn) for turn in conversation.get('userTurns', []) if turn).strip()
+            if said:
+                memory.log_interaction(conversation.get('phone') or self.config.DEMO_PHONE, 'in', 'call', said,
+                    event_id='transcript:' + conversation['id'])
+            session = self.get_session(conversation['id'])
+            if session:
+                session.update(conversationId=conversation['id'], approvedCount=len(conversation['actionIds']),
+                    taskDecisions=copy.deepcopy(conversation['dispositions']),
+                    actionResults=[copy.deepcopy(engine.state['mock_results'][rid])
+                        for rid in conversation['actionIds'] if rid in engine.state['mock_results']],
+                    receiptStatus='dashboard_only', conversationStatus=conversation['status'])
+                if conversation.get('channel') != 'sms':
+                    session['status'] = conversation['status']
+                self._update(session)
             return
         session = self.get_session(item.get('opportunitySessionId', item['id']))
         if not session:
@@ -356,7 +565,7 @@ class CallService:
                 actionStatus=item['actionStatus'], externalEffect=False,
                 contextStorage=item.get('contextStorage', 'local_only'))
             if item.get('resultId'):
-                session.update(resultId=item['resultId'], mockResult=copy.deepcopy(self.engine.state['mock_results'][item['resultId']]))
+                session.update(resultId=item['resultId'], mockResult=copy.deepcopy(engine.state['mock_results'][item['resultId']]))
             self._update(session)
         else:
             await asyncio.to_thread(self.record, session, item['decision'])

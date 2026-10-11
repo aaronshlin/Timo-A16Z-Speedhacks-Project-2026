@@ -180,7 +180,7 @@ def intent(text, item):
             'go ahead do it that this please thanks thank you okay ok proceed let s '
             'send reply get book request order save accept tell prepare make create add '
             'protect start initiate continue finish resume cancel stop just the me her him uber '
-            'i m d a an like to you have my permission approve agree take care of plan happen then'.split())
+            'i m d a an like to you have my permission approve agree take care of plan happen then exactly'.split())
         # New amounts, destinations, recipients or content require another clarification.
         if set(normalize(text).split()) <= allowed:
             return 'go'
