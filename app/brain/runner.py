@@ -5,7 +5,7 @@ import logging
 
 from app.agent.actions import run_auto_actions
 from app.agent.call import call_user
-from app.brain import briefing, memory, pending, rules, state
+from app.brain import briefing, memory, pending, planner, rules, state
 from app.brain.recommend import recommend
 from app.clock import now
 from app.models import FreeWindow, Memory, Recommendation, Situation, TriggerEvent
@@ -89,6 +89,10 @@ def run(event: TriggerEvent) -> Recommendation | str | None:
         return None
     mem = memory.load(phone)
     if event.type in BRIEFED:
+        event = planner.enrich(event)
+        if not briefing.plan(event):
+            log.info("run type=%s nothing to plan, doing nothing", event.type)
+            return None
         return _brief(event, mem)
     window = _window(event)
     if window is None:

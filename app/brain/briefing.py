@@ -15,9 +15,10 @@ from app.brain import memory
 from app.models import Memory, PendingAction, TriggerEvent
 
 
-def _clock(value: str) -> str:
+def say_time(value: str | datetime) -> str:
+    """8am, 8:25am, 1:05pm."""
     try:
-        at = datetime.fromisoformat(value)
+        at = value if isinstance(value, datetime) else datetime.fromisoformat(value)
     except ValueError:
         return value
     hour = at.hour % 12 or 12
@@ -32,9 +33,9 @@ def plan(event: TriggerEvent) -> str:
         return str(payload["plan"])
     if payload.get("depart_at"):
         where = f" for {payload['destination']}" if payload.get("destination") else ""
-        return f"Leave at {_clock(str(payload['depart_at']))}{where}."
+        return f"Leave at {say_time(str(payload['depart_at']))}{where}."
     if payload.get("title") and payload.get("start"):
-        return f"{payload['title']} at {_clock(str(payload['start']))}."
+        return f"{payload['title']} at {say_time(str(payload['start']))}."
     return ""
 
 

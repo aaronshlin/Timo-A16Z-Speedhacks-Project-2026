@@ -16,6 +16,7 @@ class Event(BaseModel):
     title: str
     start: datetime
     end: datetime
+    location: str | None = None
 
 
 class Task(BaseModel):
