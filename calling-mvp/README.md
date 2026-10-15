@@ -1,6 +1,6 @@
-# Calling tools
+# Voice
 
-The backend is `app.main:app`. These scripts launch that same app, sign in locally to Dial, verify callbacks, and preserve the existing `first_call.py --call` command.
+Timo places outbound calls through Dial and can run tools during the call. These scripts start the same FastAPI app (`app.main:app`), sign in locally, and verify callbacks. Calls stay off until a live run turns them on. `first_call.py --call` remains the manual dial.
 
 See [CALENDAR_TRIGGERS.md](CALENDAR_TRIGGERS.md) for Google sign-in, the dry-run/restart checks, automatic polling and manual dialing.
 

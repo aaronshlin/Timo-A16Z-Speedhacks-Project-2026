@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Timo Showcase</title>
+<title>Timo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap" rel="stylesheet">
@@ -161,10 +161,10 @@ footer .sign { font-family: var(--display); font-size: 22px; color: var(--text);
       <div class="brand">timo<i>agent</i></div>
       <nav class="nav" aria-label="Pages">
         <a href="/">Agent replay</a>
-        <a href="/hackathon" aria-current="page">Showcase</a>
+        <a href="/showcase" aria-current="page">Product</a>
       </nav>
     </div>
-    <p class="kicker">SpeedHacks 2026 · Give people their time back</p>
+    <p class="kicker">Reaches you first · One number · No app</p>
     <h1 class="disp">Your day, handled by <em>a phone call.</em></h1>
     <p class="lede">Timo is an AI agent that lives in a phone number. It reads your calendar, plans around your commute, and calls or texts you first with one exact thing to do. No app to open and no list to check.</p>
     <div class="ctas">
@@ -176,24 +176,24 @@ footer .sign { font-family: var(--display); font-size: 22px; color: var(--text);
 
 <main class="wrap">
   <div class="proof">
-    <div class="stat rise"><div class="v disp">116<small>min</small></div><div class="l">of screen time handed back across 12 everyday tasks (demo-set estimate)</div></div>
-    <div class="stat rise"><div class="v disp">0<small>apps</small></div><div class="l">to install. Anyone with a phone number can use Timo today.</div></div>
-    <div class="stat rise"><div class="v disp">1<small>word</small></div><div class="l">steers it. Reply go, next, done, bus or Y.</div></div>
-    <div class="stat rise"><div class="v disp">74<small>tests</small></div><div class="l">keep the whole loop solid, and every one runs offline.</div></div>
+    <div class="stat rise"><div class="v disp">0<small>apps</small></div><div class="l">to install. A phone number is the account.</div></div>
+    <div class="stat rise"><div class="v disp">1<small>word</small></div><div class="l">steers it. Reply go, next, done, bus, or Y.</div></div>
+    <div class="stat rise"><div class="v disp">20<small>min</small></div><div class="l">before you need to leave, Timo reaches out with the plan.</div></div>
+    <div class="stat rise"><div class="v disp">2<small>calls</small></div><div class="l">a day, unless something is urgent. Quiet hours hold either way.</div></div>
   </div>
 
   <section>
     <div class="sh rise"><h2>Four moves. Zero decisions for you.</h2><p>Timo never hands you a to-do list. It brings you one pick, already lined up.</p></div>
     <div class="steps">
       <div class="step rise"><div class="n">1</div><h3>Watches</h3><p>It reads your calendar for free gaps and works out when you need to leave, from how you get around.</p></div>
-      <div class="step rise"><div class="n">2</div><h3>Decides</h3><p>It picks one thing that fits the gap: the assignment due soonest, something phone-friendly for the bus, or a reply to send.</p></div>
+      <div class="step rise"><div class="n">2</div><h3>Decides</h3><p>It picks one thing that fits the time: the task due soonest, something you can do from a phone, or a reply to send.</p></div>
       <div class="step rise"><div class="n">3</div><h3>Acts</h3><p>It lines up the safe, reversible steps itself and has the draft ready before it reaches you.</p></div>
       <div class="step rise"><div class="n">4</div><h3>Reaches out</h3><p>It calls when you're about to leave and texts the rest of the time. Say yes on the call and it acts while you're still on the line.</p></div>
     </div>
   </section>
 
   <section>
-    <div class="sh rise"><h2>A day with Timo</h2><p>Real decisions from Timo's engine on a Berkeley student's Sunday, Oct 11.</p></div>
+    <div class="sh rise"><h2>A day with Timo</h2><p>Leave-by times, one pick per gap, and a one-word reply. This day is produced by the planner.</p></div>
     <div class="day">
       <ul class="moments">
         <li class="moment rise"><div class="t">7:20am</div><div><div class="what">Calls before the commute</div>
@@ -225,9 +225,9 @@ footer .sign { font-family: var(--display); font-size: 22px; color: var(--text);
     <div class="why">
       <div class="card rise"><h3>It calls you first.</h3><p>Timo decides when to reach out: in a free gap, or 20 minutes before you need to leave. It also knows when to stay quiet.</p></div>
       <div class="card rise"><h3>SMS is the control plane.</h3><p>One-word replies steer the agent, and a single Y approves an action. There are no menus or screens to learn.</p></div>
-      <div class="card rise"><h3>Two agents, real numbers.</h3><p>Timo calls an agent on a second Dial number that plays the user, and a spoken yes runs tools in the middle of the call.</p></div>
-      <div class="card rise"><h3>Safe by design.</h3><p>Rules live in code: text vs. call, quiet hours, at most 2 calls a day. Anything that touches other people waits for your yes.</p></div>
-      <div class="card rise"><h3>Built to survive the demo.</h3><p>If the LLM goes down, Timo still sends a clear message. An unanswered call becomes a text, and webhooks are signed and deduplicated.</p></div>
+      <div class="card rise"><h3>A real phone number.</h3><p>Timo calls and texts over Dial. A spoken yes can run a tool during the call, and every action that affects someone else is confirmed first.</p></div>
+      <div class="card rise"><h3>Safe by design.</h3><p>Rules live in code: text versus call, quiet hours, at most two calls a day. Anything that touches other people waits for a yes.</p></div>
+      <div class="card rise"><h3>Still works if the model is down.</h3><p>Timo still sends the leave-by time. An unanswered call becomes a text. Webhooks are signed and deduplicated.</p></div>
       <div class="card rise"><h3>Hands-free when it counts.</h3><p>Biking, driving or on the bus, voice gets you the plan without touching a screen.</p></div>
     </div>
   </section>
@@ -259,7 +259,7 @@ footer .sign { font-family: var(--display); font-size: 22px; color: var(--text);
 
   <footer>
     <div class="sign">timo</div>
-    <div>Built in one day at SpeedHacks · Oct 11, 2026 · Aaron, Adith, Eric and Johnson</div>
+    <div>Calendar, commute, and one phone number.</div>
   </footer>
 </main>
 

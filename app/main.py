@@ -65,7 +65,11 @@ async def lifespan(_app: FastAPI):
             instance.close()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Timo",
+    description="An always-on agent that lives in a phone number. It plans around the calendar and the commute, then calls or texts first.",
+    lifespan=lifespan,
+)
 app.include_router(phone_router)
 app.include_router(agent_router)
 app.include_router(voice_router)

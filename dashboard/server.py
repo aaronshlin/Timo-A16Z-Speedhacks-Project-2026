@@ -31,7 +31,12 @@ _BASE = os.environ.get("TIMO_BASE", "http://127.0.0.1:8000").rstrip("/")
 _CACHE_SECONDS = 5.0
 _cache: tuple[float, dict] | None = None
 
-app = FastAPI(title="Timo dashboard", docs_url=None, redoc_url=None)
+app = FastAPI(
+    title="Timo",
+    description="Read-only replay of a day, and a live mirror of calls.",
+    docs_url=None,
+    redoc_url=None,
+)
 
 
 def _build() -> dict:
@@ -59,9 +64,10 @@ def sample():
     return FileResponse(_SAMPLE, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/showcase")
 @app.get("/hackathon")
 @app.get("/hackathon.html")
-def hackathon() -> FileResponse:
+def showcase() -> FileResponse:
     return FileResponse(_HERE / "hackathon.html", headers={"Cache-Control": "no-store"})
 
 

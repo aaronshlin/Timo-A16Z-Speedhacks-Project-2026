@@ -1,7 +1,7 @@
 [project]
 name = "timo"
 version = "0.1.0"
-description = "Timo walking skeleton"
+description = "An always-on agent that lives in a phone number and reaches out first with the next step."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
